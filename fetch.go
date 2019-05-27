@@ -3,59 +3,64 @@ package fetch
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"path"
-
-	"github.com/beanscc/fetch/hooks"
+	"time"
 )
 
 // Fetch
 type Fetch struct {
-	client   *http.Client
-	url      *url.URL
-	method   string
-	header   http.Header
-	body     io.Reader
-	response *response
-	preDo    []hooks.PreDoer
-	afterDo  []hooks.AfterDoer
-	debug    bool
-	err      error
-	ctx      context.Context
+	client       *http.Client    // client
+	baseURL      string          // client 的基础 url
+	interceptors []Interceptor   // 拦截器
+	onceReq      *request        // once req
+	onceResp     *response       // once resp
+	debug        bool            // debug
+	err          error           // error
+	ctx          context.Context // ctx
+	timeout      time.Duration   // timeout
+	// retry // retry 可以考虑通过 interceptor 实现
 }
 
 // New return new Fetch
-func New(URL string) *Fetch {
-	u, err := url.Parse(URL)
+func New(baseURL string) *Fetch {
 	return &Fetch{
-		client:  http.DefaultClient,
-		url:     u,
-		header:  make(http.Header),
-		preDo:   make([]hooks.PreDoer, 0),
-		afterDo: make([]hooks.AfterDoer, 0),
-		debug:   false,
-		err:     err,
-		ctx:     context.Background(),
+		client:   http.DefaultClient,
+		baseURL:  baseURL,
+		onceReq:  newRequest(),
+		onceResp: new(response),
+		debug:    false,
+		err:      nil,
+		ctx:      context.Background(),
 	}
 }
 
-// Clone return a clone Fetch only with client and url and err
-func (f *Fetch) Clone() *Fetch {
-	nf := new(Fetch)
-	nf.client = f.client
-	nf.url = f.url
-	nf.header = f.header
-	nf.preDo = f.preDo
-	nf.afterDo = f.afterDo
-	nf.debug = f.debug
-	nf.err = f.err
+// UseInterceptor 使用拦截器
+func (f *Fetch) UseInterceptor(interceptors ...Interceptor) {
+	if f.interceptors == nil {
+		f.interceptors = make([]Interceptor, 0, len(interceptors))
+	}
 
-	return nf
+	f.interceptors = interceptors
 }
+
+// todo Clone return a clone Fetch only with client and url and err
+// func (f *Fetch) Clone() *Fetch {
+// 	nf := new(Fetch)
+// 	// todo 考虑哪些参数需要 clone
+// 	nf.client = f.client                 // client 需要公用
+// 	nf.onceReq.url = f.onceReq.url       // 基础的服务地址需要公用
+// 	nf.onceReq.header = f.onceReq.header // 某个服务公用的 header 需要公用
+// 	nf.preDo = f.preDo                   // 服务的插件需要公用
+// 	nf.afterDo = f.afterDo
+// 	nf.debug = f.debug // debug 公用
+// 	nf.err = nil
+//
+// 	return nf
+// }
 
 // Error return err
 func (f *Fetch) Error() error {
@@ -71,12 +76,16 @@ func (f *Fetch) WithContext(ctx context.Context) *Fetch {
 	*nf = *f
 	nf.ctx = ctx
 
-	// Deep copy the URL
-	if f.url != nil {
-		nfURL := new(url.URL)
-		*nfURL = *f.url
-		nf.url = nfURL
-	}
+	// reset resp & resp
+	nf.onceReq = newRequest()
+	nf.onceResp = nil
+
+	// // Deep copy the baseURL
+	// if f.baseURL != nil {
+	// 	nfURL := new(url.URL)
+	// 	*nfURL = *f.baseURL
+	// 	nf.baseURL = nfURL
+	// }
 
 	return nf
 }
@@ -90,31 +99,15 @@ func (f *Fetch) Context() context.Context {
 	return f.ctx
 }
 
-// Method 设置 http 请求方法
-func (f *Fetch) Method(method string) *Fetch {
-	f.setMethod(method)
-	return f
-}
-
-// setMethod 设置 http 请求方法
-func (f *Fetch) setMethod(method string) {
-	f.method = method
-}
-
 // Debug 开启 Debug 模式
 func (f *Fetch) Debug(debug bool) *Fetch {
 	f.debug = debug
 	return f
 }
 
-func (f *Fetch) PreDo(hooks ...hooks.PreDoer) *Fetch {
-	f.preDo = append(f.preDo, hooks...)
-	return f
-}
-
-func (f *Fetch) AfterDo(hooks ...hooks.AfterDoer) *Fetch {
-	f.afterDo = append(f.afterDo, hooks...)
-	return f
+// setMethod 设置 http 请求方法
+func (f *Fetch) setMethod(method string) {
+	f.onceReq.method = method
 }
 
 func (f *Fetch) Get(URLPath string) *Fetch {
@@ -141,174 +134,199 @@ func (f *Fetch) Delete(URLPath string) *Fetch {
 	return f
 }
 
-func (f *Fetch) Options() *Fetch {
-	f.setMethod(http.MethodOptions)
-	return f
-}
-
-// Path 设置 URL Path
-func (f *Fetch) Path(URLPath string) *Fetch {
-	f.setPath(URLPath)
-	return f
-}
-
 // setPath 设置 URL path
 func (f *Fetch) setPath(URLPath string) {
 	if f.Error() != nil {
 		return
 	}
 
-	f.url, f.err = f.url.Parse(path.Join(f.url.Path, URLPath))
+	u, err := url.Parse(f.baseURL)
+	if u != nil {
+		u.Path = path.Join(u.Path, URLPath)
+	}
+
+	f.onceReq.url = u
+	f.err = err
 }
 
 // Query 设置单个查询参数
 func (f *Fetch) Query(key, value string) *Fetch {
-	if f.Error() != nil {
-		return f
-	}
-
-	q := f.url.Query()
-	q.Add(key, value)
-	f.url.RawQuery = q.Encode()
+	f.onceReq.queryParameter[key] = value
 	return f
 }
 
-// QueryMany 多个查询参数
-func (f *Fetch) QueryMany(params map[string]string) *Fetch {
-	if f.Error() != nil {
-		return f
-	}
-
-	q := f.url.Query()
+// QueryMap 多个查询参数
+func (f *Fetch) QueryMap(params map[string]string) *Fetch {
 	for key, value := range params {
-		q.Add(key, value)
+		f.onceReq.queryParameter[key] = value
 	}
-
-	f.url.RawQuery = q.Encode()
 	return f
 }
 
-// QueryContext 设置单个查询参数，同时设置 ctx
-func (f *Fetch) QueryContext(ctx context.Context, key, value string) *Fetch {
-	f.Query(key, value)
-	return f.WithContext(ctx)
-}
+// 处理 query 参数
+func (f *Fetch) prepareQuery() {
+	if len(f.onceReq.queryParameter) > 0 {
+		q := f.onceReq.url.Query()
+		for key, value := range f.onceReq.queryParameter {
+			q.Add(key, value)
+		}
 
-// QueryManyContext 设置多个查询参数，同时设置 ctx
-func (f *Fetch) QueryManyContext(ctx context.Context, params map[string]string) *Fetch {
-	f.QueryMany(params)
-	return f.WithContext(ctx)
+		f.onceReq.url.RawQuery = q.Encode()
+	}
 }
 
 // AddHeader 添加 http header
 func (f *Fetch) AddHeader(key, value string) *Fetch {
-	f.header.Add(key, value)
+	f.onceReq.header.Add(key, value)
 	return f
 }
 
 // SetHeader 设置 http header
 func (f *Fetch) SetHeader(key, value string) *Fetch {
-	f.header.Set(key, value)
+	f.onceReq.header.Set(key, value)
 	return f
 }
 
-// // Body 设置 http 请求 body
-// func (f *Fetch) Body(body io.Reader) *Fetch {
-// 	f.body = body
-// 	return f
-// }
-
-// Send 发送请求
-func (f *Fetch) Send(body io.Reader) *response {
-	if f.Error() != nil {
-		out := &response{err: f.Error()}
-		f.response = out
-		return out
+// Send 设置 http 请求 body
+func (f *Fetch) Send(body Body) *Fetch {
+	if body != nil {
+		f.onceReq.body = body
 	}
 
-	f.body = body
-
-	req, err := http.NewRequest(f.method, f.url.String(), f.body)
-	if err != nil {
-		f.err = err
-
-		out := &response{err: err}
-		f.response = out
-		return out
-	}
-
-	// set header
-	if len(f.header) > 0 {
-		req.Header = f.header
-	}
-
-	// todo pre do
-	if f.debug {
-		_ = DebugRequest(req, true)
-	}
-
-	resp, err := f.client.Do(req)
-	if err != nil {
-		f.err = err
-		out := &response{err: err}
-		f.response = out
-		return out
-	}
-	defer resp.Body.Close()
-
-	// todo after do
-
-	if f.debug {
-		_ = DebugResponse(resp, true)
-	}
-
-	b := resp.Body
-	respBody, err := ioutil.ReadAll(b)
-	out := &response{resp: resp, body: respBody, err: err}
-	f.response = out
-	return out
+	return f
 }
 
-func DebugRequest(req *http.Request, body bool) error {
+// SendJSON 发送json格式, p 不支持 json 字符串形式，
+// 若需要传 json 字符串，请使用 SendJSONStr 方法
+func (f *Fetch) SendJSON(p interface{}) *Fetch {
+	f.Send(Json{Param: p})
+
+	return f
+}
+
+func (f *Fetch) SendJSONStr(js string) *Fetch {
+	f.Send(JsonStr{js})
+
+	return f
+}
+
+// SendForm 发送 form 格式数据
+func (f *Fetch) SendForm(p map[string]string) *Fetch {
+	f.Send(XWWWFormURLEncoded{p})
+
+	return f
+}
+
+func (f *Fetch) handleBody() (io.Reader, error) {
+	if f.onceReq.body != nil {
+		r, err := f.onceReq.body.Body()
+		if err != nil {
+			// todo log
+			return nil, err
+		}
+
+		// 替换 content-type
+		for k, v := range f.onceReq.body.Type() {
+			f.onceReq.header.Del(k)
+			for _, vv := range v {
+				f.onceReq.header.Add(k, vv)
+			}
+		}
+
+		return r, nil
+	}
+
+	return nil, nil
+}
+
+// Do 执行 http 请求
+func (f *Fetch) Do() *response {
+	if f.Error() != nil {
+		return newErrResp(f.Error())
+	}
+
+	// 处理 query 参数
+	f.prepareQuery()
+
+	// 处理 body
+	body, err := f.handleBody()
+	if err != nil {
+		f.err = err
+		// todo log
+		return newErrResp(f.Error())
+	}
+
+	// req
+	req, err := http.NewRequest(f.onceReq.method, f.onceReq.url.String(), body)
+	if err != nil {
+		f.err = err
+		// todo log
+		return newErrResp(f.Error())
+	}
+
+	// handle header
+	if len(f.onceReq.header) > 0 {
+		req.Header = f.onceReq.header
+	}
+
+	// 定义 handle
+	handler := func(ctx context.Context, req *http.Request) (*http.Response, error) {
+		req = req.WithContext(ctx)
+
+		if f.debug { // debug req
+			_ = debugRequest(req, true)
+		}
+
+		resp, err := f.client.Do(req)
+		if err != nil {
+			return resp, err
+		}
+		defer resp.Body.Close()
+
+		if f.debug { // debug resp
+			_ = debugResponse(resp, true)
+		}
+
+		// 转换 resp.Body 为 io.ReaderNoClose
+		var err2 error
+		resp.Body, err2 = NopCloserRespBody(resp.Body)
+		return resp, err2
+	}
+
+	// 合并拦截器
+	interceptor := ChainInterceptor(f.interceptors...)
+	// 执行
+	resp, err := interceptor(f.Context(), req, handler)
+	if err != nil {
+		return newErrResp(err)
+	}
+
+	var b []byte
+	b, resp.Body, err = DrainBody(resp.Body)
+	// todo body 读完了，body就空了，没有内容了，考虑提供一个类似 req 读取body的 getBody() 方法
+	f.onceResp = &response{resp: resp, body: b, err: err}
+	return f.onceResp
+}
+
+func debugRequest(req *http.Request, body bool) error {
 	dump, err := httputil.DumpRequestOut(req, body)
 	if err != nil {
-		log.Printf("[Debug-Req] Dump request failed. err=%v", err)
+		log.Printf("[Fetch-Debug] Dump request failed. err=%v", err)
 		return err
 	}
 
-	log.Printf("[Debug-Req] %s", dump)
+	log.Printf("[Fetch-Debug] %s", dump)
 
 	return nil
 }
 
-func DebugResponse(resp *http.Response, body bool) error {
+func debugResponse(resp *http.Response, body bool) error {
 	dump, err := httputil.DumpResponse(resp, body)
 	if err != nil {
-		log.Printf("[Debug-Res] Dump request failed. err=%v", err)
+		log.Printf("[Fetch-Debug] Dump response failed. err=%v", err)
 		return err
 	}
 
-	log.Printf("[Debug-Res] %s", dump)
+	log.Printf("[Fetch-Debug] %s", dump)
 	return nil
 }
-
-/*
-
-使用：
-
-
-## Get
-fetch.New("http://www.xxx.com").
-	Get("controller/action").
-	Query("k1", "v1").
-	Send().
-	Error()
-
-fetch.New("http://www.xxx.com").Get("controller/action").QueryContext(ctx, "k1", "v1").Send().Error()
-
-
-fetch.Get("http://www.xxx.com").Path("controller/action").Query("k1", "v1").Send().Error()
-
-## Post
-fetch.New("http://www.xxx.com").Post().Path("controller/action").Query("k1", "v1").Body(strings.NewReader(`1=2`)).Send().Scan().Error()
-*/
