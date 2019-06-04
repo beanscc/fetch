@@ -2,49 +2,77 @@ package fetch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 )
 
 // Fetch
 type Fetch struct {
-	client       *http.Client    // client
-	baseURL      string          // client 的基础 url
-	interceptors []Interceptor   // 拦截器
-	onceReq      *request        // once req
-	onceResp     *response       // once resp
-	debug        bool            // debug
-	err          error           // error
-	ctx          context.Context // ctx
-	timeout      time.Duration   // timeout
+	client       *http.Client         // client
+	baseURL      string               // client 的基础 url
+	interceptors []InterceptorHandler // 拦截器
+	onceReq      *request             // once req
+	debug        bool                 // debug
+	err          error                // error
+	ctx          context.Context      // ctx
+	timeout      time.Duration        // timeout
 	// retry // retry 可以考虑通过 interceptor 实现
 }
 
 // New return new Fetch
 func New(baseURL string) *Fetch {
 	return &Fetch{
-		client:   http.DefaultClient,
-		baseURL:  baseURL,
-		onceReq:  newRequest(),
-		onceResp: new(response),
-		debug:    false,
-		err:      nil,
-		ctx:      context.Background(),
+		client:       http.DefaultClient,
+		baseURL:      baseURL,
+		interceptors: make([]InterceptorHandler, 0),
+		onceReq:      newRequest(),
+		debug:        false,
+		err:          nil,
+		ctx:          context.Background(),
 	}
 }
 
-// UseInterceptor 使用拦截器
-func (f *Fetch) UseInterceptor(interceptors ...Interceptor) {
-	if f.interceptors == nil {
-		f.interceptors = make([]Interceptor, 0, len(interceptors))
+// RegisterInterceptor 注册拦截器
+// 若 name 相同，则后面注册的 interceptor 会覆盖之前的 interceptor
+func (f *Fetch) RegisterInterceptor(name string, interceptor Interceptor) {
+	if strings.TrimSpace(name) == "" {
+		panic("interceptor's name should not be empty")
+	}
+	for k, v := range f.interceptors {
+		if v.Name == name {
+			f.interceptors[k].Interceptor = interceptor
+			return
+		}
 	}
 
-	f.interceptors = interceptors
+	f.interceptors = append(f.interceptors, InterceptorHandler{
+		Name:        name,
+		Interceptor: interceptor,
+	})
+}
+
+// RegisterInterceptors 一次注册多个拦截器
+func (f *Fetch) RegisterInterceptors(interceptors ...InterceptorHandler) {
+	for _, v := range interceptors {
+		f.RegisterInterceptor(v.Name, v.Interceptor)
+	}
+}
+
+// getChainInterceptor 获取拦截器合并后的拦截器
+func (f *Fetch) getChainInterceptor() Interceptor {
+	interceptors := make([]Interceptor, 0, len(f.interceptors))
+	for _, v := range f.interceptors {
+		interceptors = append(interceptors, v.Interceptor)
+	}
+	// 合并拦截器
+	return ChainInterceptor(interceptors...)
 }
 
 // todo Clone return a clone Fetch only with client and url and err
@@ -78,7 +106,7 @@ func (f *Fetch) WithContext(ctx context.Context) *Fetch {
 
 	// reset resp & resp
 	nf.onceReq = newRequest()
-	nf.onceResp = nil
+	// nf.onceResp = nil
 
 	// // Deep copy the baseURL
 	// if f.baseURL != nil {
@@ -102,6 +130,12 @@ func (f *Fetch) Context() context.Context {
 // Debug 开启 Debug 模式
 func (f *Fetch) Debug(debug bool) *Fetch {
 	f.debug = debug
+	return f
+}
+
+// Timeout set timeout
+func (f *Fetch) Timeout(d time.Duration) *Fetch {
+	f.timeout = d
 	return f
 }
 
@@ -151,23 +185,23 @@ func (f *Fetch) setPath(URLPath string) {
 
 // Query 设置单个查询参数
 func (f *Fetch) Query(key, value string) *Fetch {
-	f.onceReq.queryParameter[key] = value
+	f.onceReq.params[key] = value
 	return f
 }
 
 // QueryMap 多个查询参数
 func (f *Fetch) QueryMap(params map[string]string) *Fetch {
 	for key, value := range params {
-		f.onceReq.queryParameter[key] = value
+		f.onceReq.params[key] = value
 	}
 	return f
 }
 
 // 处理 query 参数
-func (f *Fetch) prepareQuery() {
-	if len(f.onceReq.queryParameter) > 0 {
+func (f *Fetch) handleParams() {
+	if len(f.onceReq.params) > 0 {
 		q := f.onceReq.url.Query()
-		for key, value := range f.onceReq.queryParameter {
+		for key, value := range f.onceReq.params {
 			q.Add(key, value)
 		}
 
@@ -187,7 +221,7 @@ func (f *Fetch) SetHeader(key, value string) *Fetch {
 	return f
 }
 
-// Send 设置 http 请求 body
+// Send 设置请求的 body 消息体
 func (f *Fetch) Send(body Body) *Fetch {
 	if body != nil {
 		f.onceReq.body = body
@@ -196,30 +230,28 @@ func (f *Fetch) Send(body Body) *Fetch {
 	return f
 }
 
-// SendJSON 发送json格式, p 不支持 json 字符串形式，
-// 若需要传 json 字符串，请使用 SendJSONStr 方法
-func (f *Fetch) SendJSON(p interface{}) *Fetch {
+// SendJson 发送json格式消息, p 不支持 json 字符串形式，
+// 若需要传 json 字符串，请使用 SendJsonStr 方法
+func (f *Fetch) SendJson(p interface{}) *Fetch {
 	f.Send(Json{Param: p})
-
 	return f
 }
 
-func (f *Fetch) SendJSONStr(js string) *Fetch {
+// SendJsonStr 发送 json 格式消息，以传入的 json 字符串数据为消息体
+func (f *Fetch) SendJsonStr(js string) *Fetch {
 	f.Send(JsonStr{js})
-
 	return f
 }
 
-// SendForm 发送 form 格式数据
+// SendForm 发送 x-www-form-urlencoded 格式消息
 func (f *Fetch) SendForm(p map[string]string) *Fetch {
 	f.Send(XWWWFormURLEncoded{p})
-
 	return f
 }
 
 func (f *Fetch) handleBody() (io.Reader, error) {
 	if f.onceReq.body != nil {
-		r, err := f.onceReq.body.Body()
+		b, err := f.onceReq.body.Body()
 		if err != nil {
 			// todo log
 			return nil, err
@@ -227,16 +259,28 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 
 		// 替换 content-type
 		for k, v := range f.onceReq.body.Type() {
-			f.onceReq.header.Del(k)
+			// f.onceReq.header.Del(k)
 			for _, vv := range v {
 				f.onceReq.header.Add(k, vv)
 			}
 		}
 
-		return r, nil
+		return b, nil
 	}
 
 	return nil, nil
+}
+
+func (f *Fetch) validateDo() error {
+	if f.onceReq.method == "" {
+		return errors.New("empty method. please use method func first. Get()/Post() and so on")
+	}
+
+	if f.onceReq.url.String() == "" {
+		return errors.New("empty url. please use method func first. Get()/Post() and so on")
+	}
+
+	return nil
 }
 
 // Do 执行 http 请求
@@ -245,8 +289,13 @@ func (f *Fetch) Do() *response {
 		return newErrResp(f.Error())
 	}
 
+	if err := f.validateDo(); err != nil {
+		f.err = err
+		return newErrResp(f.Error())
+	}
+
 	// 处理 query 参数
-	f.prepareQuery()
+	f.handleParams()
 
 	// 处理 body
 	body, err := f.handleBody()
@@ -265,8 +314,17 @@ func (f *Fetch) Do() *response {
 	}
 
 	// handle header
-	if len(f.onceReq.header) > 0 {
-		req.Header = f.onceReq.header
+	for k, v := range f.onceReq.header {
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
+	}
+
+	// timeout
+	if f.timeout > 0 {
+		var cancel context.CancelFunc
+		f.ctx, cancel = context.WithTimeout(f.Context(), f.timeout)
+		defer cancel()
 	}
 
 	// 定义 handle
@@ -287,14 +345,11 @@ func (f *Fetch) Do() *response {
 			_ = debugResponse(resp, true)
 		}
 
-		// 转换 resp.Body 为 io.ReaderNoClose
-		var err2 error
-		resp.Body, err2 = NopCloserRespBody(resp.Body)
-		return resp, err2
+		return resp, nil
 	}
 
-	// 合并拦截器
-	interceptor := ChainInterceptor(f.interceptors...)
+	// 获取合并后的拦截器
+	interceptor := f.getChainInterceptor()
 	// 执行
 	resp, err := interceptor(f.Context(), req, handler)
 	if err != nil {
@@ -304,8 +359,7 @@ func (f *Fetch) Do() *response {
 	var b []byte
 	b, resp.Body, err = DrainBody(resp.Body)
 	// todo body 读完了，body就空了，没有内容了，考虑提供一个类似 req 读取body的 getBody() 方法
-	f.onceResp = &response{resp: resp, body: b, err: err}
-	return f.onceResp
+	return &response{resp: resp, body: b, err: err}
 }
 
 func debugRequest(req *http.Request, body bool) error {

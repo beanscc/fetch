@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"testing"
@@ -21,7 +22,7 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 		// return nil, errors.New("[filterOk] filtered")
 		var b []byte
 		b, resp.Body, err = DrainBody(resp.Body)
-		log.Printf("[filterOk] resp.Body=%v..., err=%v", b[:100], err)
+		log.Printf("[filterOk] resp.Body=%s..., err=%v", b[:100], err)
 	}
 
 	log.Printf("[filterOK] end")
@@ -36,18 +37,62 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 		log.Printf("[filter-1] err=%v", err)
 		return resp, err
 	}
-
+	var b []byte
+	b, resp.Body, err = DrainBody(resp.Body)
+	log.Printf("[filter-1] resp.Body=%s..., err=%v", b[:100], err)
 	log.Printf("[filter-1] end")
 
 	return resp, err
 }
 
+func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
+	log.Printf("[retry_1] start")
+
+	var (
+		resp *http.Response
+		err  error
+	)
+
+	err = Retry(3*time.Second, 3, func(n int) error {
+		log.Printf("[retry_1] n=%v", n)
+		resp, err = handler(ctx, req)
+		if err != nil || resp == nil || resp.StatusCode != 500 {
+			if n == 2 { // 模拟第二次重试时，达到预期
+				return nil
+			}
+			return errors.New("[retry_1] has err. want retry")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[retry_1] retry failed. err=%v", err)
+		return resp, err
+	}
+	var b []byte
+	b, resp.Body, err = DrainBody(resp.Body)
+	log.Printf("[retry_1] resp.Body=%s..., err=%v", b[:100], err)
+	log.Printf("[retry_1] end")
+
+	return resp, err
+
+}
+
+// go test -v -run Test_Fetch_Get
 func Test_Fetch_Get(t *testing.T) {
 	f := New("http://www.dianping.com/")
-	f.UseInterceptor(filterOk, filter1)
-	resp := f.Get("/bar/search").Debug(true).
+	// f.UseInterceptor(filterOk, filter1)
+	f.RegisterInterceptors(
+		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
+		InterceptorHandler{Name: "filter1", Interceptor: filter1},
+		InterceptorHandler{Name: "filter1", Interceptor: retry_1},
+	)
+	resp := f.Get("/bar/search").
+		Debug(true).
+		// Timeout(100*time.Millisecond).  // 超时
 		Query("cityId", "2").
-		Send(nil).Do()
+		Do()
 	_, err := resp.Body()
 	// out, err := resp.Body()
 	// t.Logf("err=%v, out=%#v", err, string(out))
@@ -67,7 +112,7 @@ func Test_Fetch_Get(t *testing.T) {
 	}
 
 	var sr searchResp
-	err = resp.BindJSON(&sr)
+	err = resp.BindJson(&sr)
 	// t.Logf("err=%v", err)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }
@@ -91,9 +136,9 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
-		// SendJSON(cUser).
+		// SendJson(cUser).
 		Send(XWWWFormURLEncoded{cUserMap}).
-		// SendJSONStr(cUserStr).
+		// SendJsonStr(cUserStr).
 		Do()
 
 	_, err := resp.Body()
@@ -106,7 +151,7 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	}
 
 	var sr uResp
-	err = resp.BindJSON(&sr)
+	err = resp.BindJson(&sr)
 	// t.Logf("err=%v", err)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }

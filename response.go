@@ -31,6 +31,9 @@ func (r *response) BindWith(obj interface{}, b binding.Binding) error {
 	return b.Bind(r.resp, obj)
 }
 
+// BindBody 解析 body 数据
+// 使用实现了 binding.BindingBody 接口的 BindBody 方法来解析并绑定body数据至 obj 对象
+// obj 对象必须是指针对象
 func (r *response) BindBody(obj interface{}, b binding.BindingBody) error {
 	if r.err != nil {
 		return r.err
@@ -39,39 +42,42 @@ func (r *response) BindBody(obj interface{}, b binding.BindingBody) error {
 	return b.BindBody(r.body, obj)
 }
 
-// BindJSON bind resp body with json
-func (r *response) BindJSON(obj interface{}) error {
+// BindJson json 格式解析 body 数据，并绑定至 obj 对象上，obj 必须是指针对象
+func (r *response) BindJson(obj interface{}) error {
 	return r.BindBody(obj, &binding.Json{})
 }
 
+// Resp 返回 http.Response
 func (r *response) Resp() (*http.Response, error) {
 	return r.resp, r.err
 }
 
+// Body 返回请求响应 body 消息体
 func (r *response) Body() ([]byte, error) {
 	return r.body, r.err
 }
 
+// 返回错误，可能是请求参数的错误，也可能是请求响应的错误
 func (r *response) Error() error {
 	return r.err
 }
 
-// NopCloserRespBody 返回一个不需要 close 的 io.ReadCloser
-func NopCloserRespBody(b io.ReadCloser) (io.ReadCloser, error) {
-	if b == http.NoBody {
-		return http.NoBody, nil
-	}
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(b); err != nil {
-		return b, err
-	}
-	if err := b.Close(); err != nil {
-		return b, err
-	}
-
-	return ioutil.NopCloser(bytes.NewReader(buf.Bytes())), nil
-}
+// // NopCloserRespBody 返回一个不需要 close 的 io.ReadCloser
+// func NopCloserRespBody(b io.ReadCloser) (io.ReadCloser, error) {
+// 	if b == http.NoBody {
+// 		return http.NoBody, nil
+// 	}
+//
+// 	var buf bytes.Buffer
+// 	if _, err := buf.ReadFrom(b); err != nil {
+// 		return b, err
+// 	}
+// 	if err := b.Close(); err != nil {
+// 		return b, err
+// 	}
+//
+// 	return ioutil.NopCloser(bytes.NewReader(buf.Bytes())), nil
+// }
 
 // drainBody reads all of b to memory and then returns two equivalent
 // ReadClosers yielding the same bytes.

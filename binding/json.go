@@ -29,6 +29,7 @@ func (j *Json) Bind(resp *http.Response, out interface{}) error {
 	return nil
 }
 
+// BindBody bind body
 func (j *Json) BindBody(body []byte, out interface{}) error {
 	return decodeJson(bytes.NewReader(body), out)
 }

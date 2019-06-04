@@ -48,25 +48,8 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 }
 
-// func DebugInterceptor(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
-// 	reqDump, err := httputil.DumpRequestOut(req, true)
-// 	if err != nil {
-// 		log.Printf("[Fetch-Debug] failed to dump http request. err: %v", err)
-// 		return nil, err
-// 	}
-//
-// 	log.Printf("[Fetch-Debug] %s", reqDump)
-//
-// 	resp, err := handler(ctx, req)
-// 	if err != nil {
-// 		return resp, err
-// 	}
-// 	respDump, err := httputil.DumpResponse(resp, true)
-// 	if err != nil {
-// 		log.Printf("[Fetch-Debug] failed to dump http response. err: %v", err)
-// 		return resp, err
-// 	}
-//
-// 	log.Printf("[Fetch-Debug] %s", respDump)
-// 	return resp, err
-// }
+// InterceptorHandler ...
+type InterceptorHandler struct {
+	Name        string      // name of Interceptor
+	Interceptor Interceptor // Interceptor
+}

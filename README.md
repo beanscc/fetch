@@ -105,7 +105,7 @@ func Do() (*response, error) {}
 
 ```go
 var a someType
-if err := resp.BindJSON(&a); err != ni {
+if err := resp.BindJson(&a); err != ni {
 	// handle err log
 	return err
 }
