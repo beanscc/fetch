@@ -76,7 +76,6 @@ func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 	log.Printf("[retry_1] end")
 
 	return resp, err
-
 }
 
 // go test -v -run Test_Fetch_Get
