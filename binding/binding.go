@@ -22,3 +22,11 @@ type BindingBody interface {
 	// 解析 http 响应 body 消息的func
 	BindBody([]byte, interface{}) error
 }
+
+var (
+	_ Binding = &Json{}
+	_ Binding = &Xml{}
+
+	_ BindingBody = &Json{}
+	_ BindingBody = &Xml{}
+)

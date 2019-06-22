@@ -11,6 +11,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/beanscc/fetch/binding"
 )
 
 // Fetch
@@ -233,19 +235,24 @@ func (f *Fetch) Send(body Body) *Fetch {
 // SendJson 发送json格式消息, p 不支持 json 字符串形式，
 // 若需要传 json 字符串，请使用 SendJsonStr 方法
 func (f *Fetch) SendJson(p interface{}) *Fetch {
-	f.Send(Json{Param: p})
+	f.Send(NewJsonBody(p))
 	return f
 }
 
 // SendJsonStr 发送 json 格式消息，以传入的 json 字符串数据为消息体
-func (f *Fetch) SendJsonStr(js string) *Fetch {
-	f.Send(JsonStr{js})
+func (f *Fetch) SendJsonStr(s string) *Fetch {
+	f.Send(NewJsonStrBody(s))
 	return f
 }
 
 // SendForm 发送 x-www-form-urlencoded 格式消息
 func (f *Fetch) SendForm(p map[string]string) *Fetch {
-	f.Send(XWWWFormURLEncoded{p})
+	f.Send(NewXWWWFormURLEncodedBody(p))
+	return f
+}
+
+func (f *Fetch) SendFormData(p map[string]string, fs ...File) *Fetch {
+	f.Send(NewFormDataBody(p, fs...))
 	return f
 }
 
@@ -257,13 +264,8 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 			return nil, err
 		}
 
-		// 替换 content-type
-		for k, v := range f.onceReq.body.Type() {
-			// f.onceReq.header.Del(k)
-			for _, vv := range v {
-				f.onceReq.header.Add(k, vv)
-			}
-		}
+		// 设置 content-type
+		f.onceReq.header.Set(HeaderContentType, f.onceReq.body.ContentType())
 
 		return b, nil
 	}
@@ -360,6 +362,31 @@ func (f *Fetch) Do() *response {
 	b, resp.Body, err = DrainBody(resp.Body)
 	// todo body 读完了，body就空了，没有内容了，考虑提供一个类似 req 读取body的 getBody() 方法
 	return &response{resp: resp, body: b, err: err}
+}
+
+// BindWith bind http response with b
+func (f *Fetch) BindWith(obj interface{}, b binding.Binding) error {
+	return f.Do().BindWith(obj, b)
+}
+
+// BindBody bind http.Body
+func (f *Fetch) BindBody(obj interface{}, b binding.BindingBody) error {
+	return f.Do().BindBody(obj, b)
+}
+
+// BindJson bind http.Body with json
+func (f *Fetch) BindJson(v interface{}) error {
+	return f.Do().BindJson(v)
+}
+
+// BindXml bind http.Body with xml
+func (f *Fetch) BindXml(v interface{}) error {
+	return f.Do().BindXml(v)
+}
+
+// Resp return http.Response
+func (f *Fetch) Resp() (*http.Response, error) {
+	return f.Do().Resp()
 }
 
 func debugRequest(req *http.Request, body bool) error {

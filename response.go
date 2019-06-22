@@ -43,8 +43,13 @@ func (r *response) BindBody(obj interface{}, b binding.BindingBody) error {
 }
 
 // BindJson json 格式解析 body 数据，并绑定至 obj 对象上，obj 必须是指针对象
-func (r *response) BindJson(obj interface{}) error {
-	return r.BindBody(obj, &binding.Json{})
+func (r *response) BindJson(v interface{}) error {
+	return r.BindBody(v, &binding.Json{})
+}
+
+// BindXml xml 格式解析 body 数据，并绑定至 v 对象上，v 必须是指针对象
+func (r *response) BindXml(v interface{}) error {
+	return r.BindBody(v, &binding.Xml{})
 }
 
 // Resp 返回 http.Response

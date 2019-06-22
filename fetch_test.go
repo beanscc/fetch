@@ -2,9 +2,13 @@ package fetch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -22,7 +26,7 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 		// return nil, errors.New("[filterOk] filtered")
 		var b []byte
 		b, resp.Body, err = DrainBody(resp.Body)
-		log.Printf("[filterOk] resp.Body=%s..., err=%v", b[:100], err)
+		log.Printf("[filterOk] resp.Body=%s..., err=%v", b, err)
 	}
 
 	log.Printf("[filterOK] end")
@@ -39,7 +43,7 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 	}
 	var b []byte
 	b, resp.Body, err = DrainBody(resp.Body)
-	log.Printf("[filter-1] resp.Body=%s..., err=%v", b[:100], err)
+	log.Printf("[filter-1] resp.Body=%s..., err=%v", b, err)
 	log.Printf("[filter-1] end")
 
 	return resp, err
@@ -116,8 +120,43 @@ func Test_Fetch_Get(t *testing.T) {
 	t.Logf("err=%v, resp=%#v", err, sr)
 }
 
+type baseResp struct {
+	Data interface{} `json:"data"`
+	Code int         `json:"code"`
+	Msg  string      `json:"msg"`
+}
+
+func (r baseResp) String() string {
+	s, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	return string(s)
+}
+
 func Test_Fetch_POST_JSON(t *testing.T) {
-	f := New("https://1d4f258f-c87a-4333-ac92-5735c96a93f9.mock.pstmn.io")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bb, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			panic(fmt.Sprintf("ioutil.ReadAll err. err=%v", err))
+		}
+
+		out := baseResp{
+			Code: 0,
+			Msg:  "",
+			Data: string(bb),
+		}
+
+		fmt.Fprintln(w, out.String()+"end")
+	}))
+
+	f := New(ts.URL)
+
+	f.RegisterInterceptors(
+		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
+		InterceptorHandler{Name: "filter1", Interceptor: filter1},
+	// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
+	)
 
 	// cUser := map[string]interface{}{
 	// 	"name": "cc",
@@ -136,20 +175,14 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// SendJson(cUser).
-		Send(XWWWFormURLEncoded{cUserMap}).
+		// SendForm(cUserMap).
+		SendFormData(cUserMap).
 		// SendJsonStr(cUserStr).
 		Do()
 
 	_, err := resp.Body()
 
-	type uResp struct {
-		Data struct {
-			ID int `json:"id"`
-		} `json:"data"`
-		Code int `json:"code"`
-	}
-
-	var sr uResp
+	var sr baseResp
 	err = resp.BindJson(&sr)
 	// t.Logf("err=%v", err)
 	t.Logf("err=%v, resp=%#v", err, sr)

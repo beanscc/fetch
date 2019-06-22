@@ -18,8 +18,12 @@ func (j *Json) Name() string {
 
 // Bind json bind
 func (j *Json) Bind(resp *http.Response, out interface{}) error {
-	if resp == nil || resp.Body == nil {
-		return errors.New("invalid resp body")
+	if resp == nil {
+		return errors.New("nil resp")
+	}
+
+	if resp.Body == nil {
+		return errors.New("nil resp.Body")
 	}
 
 	if err := decodeJson(resp.Body, out); err != nil {
