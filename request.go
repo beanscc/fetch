@@ -3,6 +3,8 @@ package fetch
 import (
 	"net/http"
 	"net/url"
+
+	"github.com/beanscc/fetch/body"
 )
 
 type request struct {
@@ -10,7 +12,7 @@ type request struct {
 	method string            // req method
 	params map[string]string // req query 参数
 	header http.Header       // req header
-	body   Body              // req body
+	body   body.Body         // req body
 }
 
 func newRequest() *request {

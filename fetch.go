@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/beanscc/fetch/binding"
+	"github.com/beanscc/fetch/body"
 )
 
 // Fetch
@@ -146,28 +147,36 @@ func (f *Fetch) setMethod(method string) {
 	f.onceReq.method = method
 }
 
-func (f *Fetch) Get(URLPath string) *Fetch {
-	f.setMethod(http.MethodGet)
-	f.setPath(URLPath)
-	return f
+// Get get 请求
+func (f *Fetch) Get(ctx context.Context, URLPath string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethod(http.MethodGet)
+	nf.setPath(URLPath)
+	return nf
 }
 
-func (f *Fetch) Post(URLPath string) *Fetch {
-	f.setMethod(http.MethodPost)
-	f.setPath(URLPath)
-	return f
+// Post post 请求
+func (f *Fetch) Post(ctx context.Context, path string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethod(http.MethodPost)
+	nf.setPath(path)
+	return nf
 }
 
-func (f *Fetch) Put(URLPath string) *Fetch {
-	f.setMethod(http.MethodPut)
-	f.setPath(URLPath)
-	return f
+// Put put 请求
+func (f *Fetch) Put(ctx context.Context, path string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethod(http.MethodPut)
+	nf.setPath(path)
+	return nf
 }
 
-func (f *Fetch) Delete(URLPath string) *Fetch {
-	f.setMethod(http.MethodDelete)
-	f.setPath(URLPath)
-	return f
+// Delete del 请求
+func (f *Fetch) Delete(ctx context.Context, path string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethod(http.MethodDelete)
+	nf.setPath(path)
+	return nf
 }
 
 // setPath 设置 URL path
@@ -191,8 +200,8 @@ func (f *Fetch) Query(key, value string) *Fetch {
 	return f
 }
 
-// QueryMap 多个查询参数
-func (f *Fetch) QueryMap(params map[string]string) *Fetch {
+// QueryMany 多个查询参数
+func (f *Fetch) QueryMany(params map[string]string) *Fetch {
 	for key, value := range params {
 		f.onceReq.params[key] = value
 	}
@@ -224,7 +233,7 @@ func (f *Fetch) SetHeader(key, value string) *Fetch {
 }
 
 // Send 设置请求的 body 消息体
-func (f *Fetch) Send(body Body) *Fetch {
+func (f *Fetch) Body(body body.Body) *Fetch {
 	if body != nil {
 		f.onceReq.body = body
 	}
@@ -232,27 +241,22 @@ func (f *Fetch) Send(body Body) *Fetch {
 	return f
 }
 
-// SendJson 发送json格式消息, p 不支持 json 字符串形式，
-// 若需要传 json 字符串，请使用 SendJsonStr 方法
-func (f *Fetch) SendJson(p interface{}) *Fetch {
-	f.Send(NewJsonBody(p))
+// JSON 发送 application/json 格式消息
+// p 支持 string/[]byte/struct/map
+func (f *Fetch) JSON(p interface{}) *Fetch {
+	f.Body(body.NewJSON(p))
 	return f
 }
 
-// SendJsonStr 发送 json 格式消息，以传入的 json 字符串数据为消息体
-func (f *Fetch) SendJsonStr(s string) *Fetch {
-	f.Send(NewJsonStrBody(s))
+// Form 发送 x-www-form-urlencoded 格式消息
+func (f *Fetch) Form(p map[string]string) *Fetch {
+	f.Body(body.NewFormFromMap(p))
 	return f
 }
 
-// SendForm 发送 x-www-form-urlencoded 格式消息
-func (f *Fetch) SendForm(p map[string]string) *Fetch {
-	f.Send(NewXWWWFormURLEncodedBody(p))
-	return f
-}
-
-func (f *Fetch) SendFormData(p map[string]string, fs ...File) *Fetch {
-	f.Send(NewFormDataBody(p, fs...))
+// MultipartForm 发送 multipart/form-data 格式消息
+func (f *Fetch) MultipartForm(p map[string]string, fs ...body.File) *Fetch {
+	f.Body(body.NewMultipartFormFromMap(p, fs...))
 	return f
 }
 
@@ -265,7 +269,7 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 		}
 
 		// 设置 content-type
-		f.onceReq.header.Set(HeaderContentType, f.onceReq.body.ContentType())
+		f.onceReq.header.Set(body.HeaderContentType, f.onceReq.body.ContentType())
 
 		return b, nil
 	}
@@ -300,7 +304,7 @@ func (f *Fetch) Do() *response {
 	f.handleParams()
 
 	// 处理 body
-	body, err := f.handleBody()
+	bb, err := f.handleBody()
 	if err != nil {
 		f.err = err
 		// todo log
@@ -308,7 +312,7 @@ func (f *Fetch) Do() *response {
 	}
 
 	// req
-	req, err := http.NewRequest(f.onceReq.method, f.onceReq.url.String(), body)
+	req, err := http.NewRequest(f.onceReq.method, f.onceReq.url.String(), bb)
 	if err != nil {
 		f.err = err
 		// todo log

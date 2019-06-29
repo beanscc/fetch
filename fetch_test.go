@@ -174,10 +174,9 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
-		// SendJson(cUser).
-		// SendForm(cUserMap).
-		SendFormData(cUserMap).
-		// SendJsonStr(cUserStr).
+		// JSON(cUser).
+		// Form(cUserMap).
+		MultipartForm(cUserMap).
 		Do()
 
 	_, err := resp.Body()

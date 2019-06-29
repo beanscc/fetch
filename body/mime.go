@@ -1,4 +1,4 @@
-package fetch
+package body
 
 import (
 	"github.com/beanscc/fetch/binding"

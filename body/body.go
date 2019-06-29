@@ -1,4 +1,4 @@
-package fetch
+package body
 
 import (
 	"io"
@@ -14,8 +14,7 @@ type Body interface {
 
 // Body 接口实现检查
 var (
-	_ Body = &JsonBody{}
-	_ Body = &JsonStrBody{}
+	_ Body = &Json{}
+	_ Body = &Form{}
 	_ Body = &FormDataBody{}
-	_ Body = &XWWWFormURLEncodedBody{}
 )
