@@ -1,44 +1,33 @@
 package binding
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"net/http"
 )
 
-// Json bind json
-type Json struct{}
+// JSON bind json
+type JSON struct{}
 
 // Name name
-func (j *Json) Name() string {
+func (j *JSON) Name() string {
 	return "json"
 }
 
 // Bind json bind
-func (j *Json) Bind(resp *http.Response, out interface{}) error {
+func (j *JSON) Bind(resp *http.Response, body []byte, out interface{}) error {
 	if resp == nil {
-		return errors.New("nil resp")
+		return errors.New("json-bind:nil resp")
 	}
 
-	if resp.Body == nil {
-		return errors.New("nil resp.Body")
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("json-bind:incorrect response status code(%v)", resp.StatusCode)
 	}
 
-	if err := decodeJson(resp.Body, out); err != nil {
-		return err
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("json-bind:%v", err)
 	}
 
 	return nil
-}
-
-// BindBody bind body
-func (j *Json) BindBody(body []byte, out interface{}) error {
-	return decodeJson(bytes.NewReader(body), out)
-}
-
-func decodeJson(r io.Reader, out interface{}) error {
-	decoder := json.NewDecoder(r)
-	return decoder.Decode(out)
 }

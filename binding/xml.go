@@ -1,44 +1,33 @@
 package binding
 
 import (
-	"bytes"
 	"encoding/xml"
 	"errors"
-	"io"
+	"fmt"
 	"net/http"
 )
 
-// Xml binding obj
-type Xml struct{}
+// XML binding obj
+type XML struct{}
 
 // Name name of binding obj
-func (x *Xml) Name() string {
+func (x *XML) Name() string {
 	return "xml"
 }
 
 // Bind 将 http.Response 响应解析到 out 对象中
-func (x *Xml) Bind(resp *http.Response, out interface{}) error {
+func (x *XML) Bind(resp *http.Response, body []byte, out interface{}) error {
 	if resp == nil {
-		return errors.New("nil resp")
+		return errors.New("xml-bind:nil resp")
 	}
 
-	if resp.Body == nil {
-		return errors.New("nil resp.Body")
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("xml-bind:incorrect response status code(%v)", resp.StatusCode)
 	}
 
-	if err := decodeXml(resp.Body, out); err != nil {
-		return err
+	if err := xml.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("xml-bind:%v", err)
 	}
 
 	return nil
-}
-
-// BindBody 将响应 body 消息，解析到 out 对象
-func (x *Xml) BindBody(b []byte, out interface{}) error {
-	return decodeXml(bytes.NewReader(b), out)
-}
-
-func decodeXml(r io.Reader, out interface{}) error {
-	decoder := xml.NewDecoder(r)
-	return decoder.Decode(out)
 }

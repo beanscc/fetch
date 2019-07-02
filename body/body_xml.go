@@ -8,6 +8,9 @@ import (
 
 // XML xml body
 type XML struct {
+	// param xml body 消息体
+	// 若类型是 string/[]byte 则，按 xml 消息字符串处理
+	// 若类型是 以上类型之外的类型，则按 xml 序列化后的字符串处理
 	param interface{}
 }
 

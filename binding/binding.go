@@ -12,21 +12,11 @@ type Binding interface {
 	// Bind 解析 http.Response 的func
 	// resp 可能是 nil，也可能由于中间件在读取完resp.Body 后未还原body，导致 body为空
 	// out 应该是一个指针对象
-	Bind(resp *http.Response, out interface{}) error
-}
-
-// BindingBody adds BindBody method to Binding. BindBody is similar with Bind,
-// but it reads the body from supplied bytes instead of resp.Body.
-type BindingBody interface {
-	Binding
-	// 解析 http 响应 body 消息的func
-	BindBody([]byte, interface{}) error
+	Bind(resp *http.Response, body []byte, out interface{}) error
 }
 
 var (
-	_ Binding = &Json{}
-	_ Binding = &Xml{}
-
-	_ BindingBody = &Json{}
-	_ BindingBody = &Xml{}
+	// Binding 接口实现检查
+	_ Binding = &JSON{}
+	_ Binding = &XML{}
 )

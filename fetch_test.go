@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/beanscc/fetch/body"
 )
 
 func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
@@ -86,12 +88,15 @@ func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 func Test_Fetch_Get(t *testing.T) {
 	f := New("http://www.dianping.com/")
 	// f.UseInterceptor(filterOk, filter1)
-	f.RegisterInterceptors(
+	f.SetInterceptors(
 		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
 		InterceptorHandler{Name: "filter1", Interceptor: filter1},
-		InterceptorHandler{Name: "filter1", Interceptor: retry_1},
+		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
 	)
-	resp := f.Get("/bar/search").
+
+	ctx := context.Background()
+
+	resp := f.Get(ctx, "/bar/search").
 		Debug(true).
 		// Timeout(100*time.Millisecond).  // 超时
 		Query("cityId", "2").
@@ -103,7 +108,7 @@ func Test_Fetch_Get(t *testing.T) {
 	type searchResp struct {
 		List []struct {
 			Value struct {
-				SubTag          string `json:"subtag"`
+				SubTag          string `json:"subtag" xml:"subtag"`
 				Location        string `json:"location"`
 				MainCategoryIDS string `json:"maincategoryids"`
 				DataType        string `json:"datatype"`
@@ -115,8 +120,8 @@ func Test_Fetch_Get(t *testing.T) {
 	}
 
 	var sr searchResp
-	err = resp.BindJson(&sr)
-	// t.Logf("err=%v", err)
+	// err = resp.BindJSON(&sr)
+	err = resp.Bind("json", &sr)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }
 
@@ -152,7 +157,7 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 
 	f := New(ts.URL)
 
-	f.RegisterInterceptors(
+	f.SetInterceptors(
 		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
 		InterceptorHandler{Name: "filter1", Interceptor: filter1},
 	// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
@@ -168,21 +173,28 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		"age":  "18",
 	}
 
+	fs := []body.File{
+		{
+			Field: "file_1",
+			Name:  "/Users/beanscc/Desktop/min-dx.json",
+		},
+	}
+
 	// cUserStr := `{"name": "cc", "age": 18}`
 
-	resp := f.Post("/api/v1/user").
+	ctx := context.Background()
+	resp := f.Post(ctx, "/api/v1/user").
 		Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// JSON(cUser).
 		// Form(cUserMap).
-		MultipartForm(cUserMap).
+		MultipartForm(cUserMap, fs...).
 		Do()
 
 	_, err := resp.Body()
 
 	var sr baseResp
-	err = resp.BindJson(&sr)
-	// t.Logf("err=%v", err)
+	err = resp.BindJSON(&sr)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }

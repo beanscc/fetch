@@ -2,6 +2,8 @@ package fetch
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -13,6 +15,7 @@ type response struct {
 	resp *http.Response
 	body []byte
 	err  error
+	bind map[string]binding.Binding
 }
 
 // newErrResp return new resp with err
@@ -22,34 +25,31 @@ func newErrResp(e error) *response {
 	}
 }
 
-// BindWith bind http.Response
-func (r *response) BindWith(obj interface{}, b binding.Binding) error {
+// Bind bind http.Response
+func (r *response) Bind(bindType string, v interface{}) error {
 	if r.err != nil {
 		return r.err
 	}
 
-	return b.Bind(r.resp, obj)
-}
-
-// BindBody 解析 body 数据
-// 使用实现了 binding.BindingBody 接口的 BindBody 方法来解析并绑定body数据至 obj 对象
-// obj 对象必须是指针对象
-func (r *response) BindBody(obj interface{}, b binding.BindingBody) error {
-	if r.err != nil {
-		return r.err
+	if r.resp == nil {
+		return errors.New("nil http.Response")
 	}
 
-	return b.BindBody(r.body, obj)
+	if b, ok := r.bind[bindType]; ok {
+		return b.Bind(r.resp, r.body, v)
+	}
+
+	return fmt.Errorf("unknown bind type:%v", bindType)
 }
 
-// BindJson json 格式解析 body 数据，并绑定至 obj 对象上，obj 必须是指针对象
-func (r *response) BindJson(v interface{}) error {
-	return r.BindBody(v, &binding.Json{})
+// BindJSON json 格式解析 body 数据，并绑定至 obj 对象上，obj 必须是指针对象
+func (r *response) BindJSON(v interface{}) error {
+	return r.Bind("json", v)
 }
 
-// BindXml xml 格式解析 body 数据，并绑定至 v 对象上，v 必须是指针对象
-func (r *response) BindXml(v interface{}) error {
-	return r.BindBody(v, &binding.Xml{})
+// BindXML xml 格式解析 body 数据，并绑定至 v 对象上，v 必须是指针对象
+func (r *response) BindXML(v interface{}) error {
+	return r.Bind("xml", v)
 }
 
 // Resp 返回 http.Response
@@ -67,24 +67,7 @@ func (r *response) Error() error {
 	return r.err
 }
 
-// // NopCloserRespBody 返回一个不需要 close 的 io.ReadCloser
-// func NopCloserRespBody(b io.ReadCloser) (io.ReadCloser, error) {
-// 	if b == http.NoBody {
-// 		return http.NoBody, nil
-// 	}
-//
-// 	var buf bytes.Buffer
-// 	if _, err := buf.ReadFrom(b); err != nil {
-// 		return b, err
-// 	}
-// 	if err := b.Close(); err != nil {
-// 		return b, err
-// 	}
-//
-// 	return ioutil.NopCloser(bytes.NewReader(buf.Bytes())), nil
-// }
-
-// drainBody reads all of b to memory and then returns two equivalent
+// DrainBody reads all of b to memory and then returns two equivalent
 // ReadClosers yielding the same bytes.
 //
 // It returns an error if the initial slurp of all bytes fails. It does not attempt

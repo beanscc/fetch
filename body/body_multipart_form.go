@@ -18,7 +18,7 @@ type MultipartForm struct {
 // File 文件
 type File struct {
 	Field string // 表单字段
-	Name  string // 文件路径和名称
+	Name  string // 文件路径名称
 }
 
 // NewFormDataBody return new MultipartForm

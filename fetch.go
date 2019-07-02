@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"path"
 	"strings"
@@ -27,6 +25,7 @@ type Fetch struct {
 	ctx          context.Context      // ctx
 	timeout      time.Duration        // timeout
 	// retry // retry 可以考虑通过 interceptor 实现
+	bind map[string]binding.Binding // 设置 bind 的实现对象
 }
 
 // New return new Fetch
@@ -39,12 +38,16 @@ func New(baseURL string) *Fetch {
 		debug:        false,
 		err:          nil,
 		ctx:          context.Background(),
+		bind: map[string]binding.Binding{
+			"json": &binding.JSON{},
+			"xml":  &binding.XML{},
+		},
 	}
 }
 
-// RegisterInterceptor 注册拦截器
+// SetInterceptor 注册拦截器
 // 若 name 相同，则后面注册的 interceptor 会覆盖之前的 interceptor
-func (f *Fetch) RegisterInterceptor(name string, interceptor Interceptor) {
+func (f *Fetch) SetInterceptor(name string, interceptor Interceptor) {
 	if strings.TrimSpace(name) == "" {
 		panic("interceptor's name should not be empty")
 	}
@@ -61,10 +64,10 @@ func (f *Fetch) RegisterInterceptor(name string, interceptor Interceptor) {
 	})
 }
 
-// RegisterInterceptors 一次注册多个拦截器
-func (f *Fetch) RegisterInterceptors(interceptors ...InterceptorHandler) {
+// SetInterceptors 一次注册多个拦截器
+func (f *Fetch) SetInterceptors(interceptors ...InterceptorHandler) {
 	for _, v := range interceptors {
-		f.RegisterInterceptor(v.Name, v.Interceptor)
+		f.SetInterceptor(v.Name, v.Interceptor)
 	}
 }
 
@@ -78,20 +81,30 @@ func (f *Fetch) getChainInterceptor() Interceptor {
 	return ChainInterceptor(interceptors...)
 }
 
-// todo Clone return a clone Fetch only with client and url and err
-// func (f *Fetch) Clone() *Fetch {
-// 	nf := new(Fetch)
-// 	// todo 考虑哪些参数需要 clone
-// 	nf.client = f.client                 // client 需要公用
-// 	nf.onceReq.url = f.onceReq.url       // 基础的服务地址需要公用
-// 	nf.onceReq.header = f.onceReq.header // 某个服务公用的 header 需要公用
-// 	nf.preDo = f.preDo                   // 服务的插件需要公用
-// 	nf.afterDo = f.afterDo
-// 	nf.debug = f.debug // debug 公用
-// 	nf.err = nil
-//
-// 	return nf
-// }
+// Clone return a clone Fetch
+func (f *Fetch) Clone() *Fetch {
+	nf := new(Fetch)
+	*nf = *f
+
+	// reset
+	nf.onceReq = newRequest()
+	nf.err = nil
+	nf.ctx = context.Background()
+
+	return nf
+}
+
+// SetBind 设置 bind
+func (f *Fetch) SetBind(key string, bind binding.Binding) {
+	f.bind[key] = bind
+}
+
+// SetBinds 设置多个 bind
+func (f *Fetch) SetBinds(b map[string]binding.Binding) {
+	for k, v := range b {
+		f.SetBind(k, v)
+	}
+}
 
 // Error return err
 func (f *Fetch) Error() error {
@@ -106,18 +119,8 @@ func (f *Fetch) WithContext(ctx context.Context) *Fetch {
 	nf := new(Fetch)
 	*nf = *f
 	nf.ctx = ctx
-
-	// reset resp & resp
 	nf.onceReq = newRequest()
-	// nf.onceResp = nil
-
-	// // Deep copy the baseURL
-	// if f.baseURL != nil {
-	// 	nfURL := new(url.URL)
-	// 	*nfURL = *f.baseURL
-	// 	nf.baseURL = nfURL
-	// }
-
+	nf.err = nil
 	return nf
 }
 
@@ -148,10 +151,10 @@ func (f *Fetch) setMethod(method string) {
 }
 
 // Get get 请求
-func (f *Fetch) Get(ctx context.Context, URLPath string) *Fetch {
+func (f *Fetch) Get(ctx context.Context, path string) *Fetch {
 	nf := f.WithContext(ctx)
 	nf.setMethod(http.MethodGet)
-	nf.setPath(URLPath)
+	nf.setPath(path)
 	return nf
 }
 
@@ -234,7 +237,7 @@ func (f *Fetch) SetHeader(key, value string) *Fetch {
 
 // Send 设置请求的 body 消息体
 func (f *Fetch) Body(body body.Body) *Fetch {
-	if body != nil {
+	if body != nil && allowBody(f.onceReq.method) {
 		f.onceReq.body = body
 	}
 
@@ -245,6 +248,13 @@ func (f *Fetch) Body(body body.Body) *Fetch {
 // p 支持 string/[]byte/struct/map
 func (f *Fetch) JSON(p interface{}) *Fetch {
 	f.Body(body.NewJSON(p))
+	return f
+}
+
+// XML 发送 application/xml 格式消息
+// p 支持 string/[]byte/struct/map
+func (f *Fetch) XML(p interface{}) *Fetch {
+	f.Body(body.NewXML(p))
 	return f
 }
 
@@ -295,7 +305,8 @@ func (f *Fetch) Do() *response {
 		return newErrResp(f.Error())
 	}
 
-	if err := f.validateDo(); err != nil {
+	err := f.validateDo()
+	if err != nil {
 		f.err = err
 		return newErrResp(f.Error())
 	}
@@ -304,14 +315,17 @@ func (f *Fetch) Do() *response {
 	f.handleParams()
 
 	// 处理 body
-	bb, err := f.handleBody()
-	if err != nil {
-		f.err = err
-		// todo log
-		return newErrResp(f.Error())
+	var bb io.Reader
+	if allowBody(f.onceReq.method) {
+		bb, err = f.handleBody()
+		if err != nil {
+			f.err = err
+			// todo log
+			return newErrResp(f.Error())
+		}
 	}
 
-	// req
+	// new req
 	req, err := http.NewRequest(f.onceReq.method, f.onceReq.url.String(), bb)
 	if err != nil {
 		f.err = err
@@ -364,54 +378,30 @@ func (f *Fetch) Do() *response {
 
 	var b []byte
 	b, resp.Body, err = DrainBody(resp.Body)
-	// todo body 读完了，body就空了，没有内容了，考虑提供一个类似 req 读取body的 getBody() 方法
-	return &response{resp: resp, body: b, err: err}
+	return &response{
+		resp: resp,
+		body: b,
+		err:  err,
+		bind: f.bind,
+	}
 }
 
-// BindWith bind http response with b
-func (f *Fetch) BindWith(obj interface{}, b binding.Binding) error {
-	return f.Do().BindWith(obj, b)
+// Bind bind 使用已注册的名为 bindType 的bind实现，解析 http 响应
+func (f *Fetch) Bind(bindType string, v interface{}) error {
+	return f.Do().Bind(bindType, v)
 }
 
-// BindBody bind http.Body
-func (f *Fetch) BindBody(obj interface{}, b binding.BindingBody) error {
-	return f.Do().BindBody(obj, b)
+// BindJSON bind http.Body with json
+func (f *Fetch) BindJSON(v interface{}) error {
+	return f.Do().BindJSON(v)
 }
 
-// BindJson bind http.Body with json
-func (f *Fetch) BindJson(v interface{}) error {
-	return f.Do().BindJson(v)
-}
-
-// BindXml bind http.Body with xml
-func (f *Fetch) BindXml(v interface{}) error {
-	return f.Do().BindXml(v)
+// BindXML bind http.Body with xml
+func (f *Fetch) BindXML(v interface{}) error {
+	return f.Do().BindXML(v)
 }
 
 // Resp return http.Response
 func (f *Fetch) Resp() (*http.Response, error) {
 	return f.Do().Resp()
-}
-
-func debugRequest(req *http.Request, body bool) error {
-	dump, err := httputil.DumpRequestOut(req, body)
-	if err != nil {
-		log.Printf("[Fetch-Debug] Dump request failed. err=%v", err)
-		return err
-	}
-
-	log.Printf("[Fetch-Debug] %s", dump)
-
-	return nil
-}
-
-func debugResponse(resp *http.Response, body bool) error {
-	dump, err := httputil.DumpResponse(resp, body)
-	if err != nil {
-		log.Printf("[Fetch-Debug] Dump response failed. err=%v", err)
-		return err
-	}
-
-	log.Printf("[Fetch-Debug] %s", dump)
-	return nil
 }

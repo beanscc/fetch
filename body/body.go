@@ -14,7 +14,8 @@ type Body interface {
 
 // Body 接口实现检查
 var (
-	_ Body = &Json{}
+	_ Body = &JSON{}
+	_ Body = &XML{}
 	_ Body = &Form{}
-	_ Body = &FormDataBody{}
+	_ Body = &MultipartForm{}
 )

@@ -1,11 +1,11 @@
 # fetch
 http 网络请求封装
 
-
 ## todo
 - 支持自定义 log 打印请求和响应日志
-- 如何支持自定义resp body 解析方式，如 json 解析
-
+- 完善 test
+- 完善 example
+- 完善 文档
 
 ## 设置服务基础域名地址
 
@@ -17,22 +17,22 @@ func New(baseUrl string) *Fetch {}
 
 ```go
 // Get
-func Get(path string) *Fetch {}
+func Get(ctx context.Context, path string) *Fetch {}
 
 // Post
-func Post(path string) *Fetch {}
+func Post(ctx context.Context, path string) *Fetch {}
 
 // Put
-func Put(path string) *Fetch {}
+func Put(ctx context.Context, path string) *Fetch {}
 
 // Delete
-func Delete(path string) *Fetch {}
+func Delete(ctx context.Context, path string) *Fetch {}
 
 // Head
-func Head(path string) *Fetch {}
+func Head(ctx context.Context, path string) *Fetch {}
 
 // Option
-func Option(path string) *Fetch {}
+func Option(ctx context.Context, path string) *Fetch {}
 ```
 
 ## 请求 path 参数设置
@@ -44,7 +44,7 @@ func Option(path string) *Fetch {}
 func Query(key, value string) *Fetch {}
 
 // 一次设置多个参数
-func QueryMap(p map[string]string) *Fetch {}
+func QueryMany(p map[string]string) *Fetch {}
 ```
 
 ## 请求 header 参数设置
@@ -232,9 +232,16 @@ func Do() (*response, error) {}
 
 ## response 解析
 
+支持自定义对请求响应的解析
+
+`SetBind("json", &binding.JSON{})`
+
+以注册的 json 解析器去解析响应 `Bind("json", &out)` 或 `BindJSON(&out)`
+
+
 ```go
 var a someType
-if err := resp.BindJson(&a); err != ni {
+if err := resp.BindJSON(&a); err != ni {
 	// handle err log
 	return err
 }

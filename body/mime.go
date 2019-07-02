@@ -1,9 +1,5 @@
 package body
 
-import (
-	"github.com/beanscc/fetch/binding"
-)
-
 // HeaderContentType content-type header key
 const HeaderContentType = "Content-Type"
 
@@ -17,9 +13,3 @@ const (
 	MIMEPOSTFORM          = "application/x-www-form-urlencoded"
 	MIMEMultipartPOSTFORM = "multipart/form-data"
 )
-
-// bindingMIME 针对不同 mime 类型的响应，指定解析方式
-var bindingMIME = map[string]binding.BindingBody{
-	MIMEJSON: &binding.Json{},
-	MIMEXML:  &binding.Xml{},
-}

@@ -8,9 +8,9 @@ import (
 
 // Json json body
 type JSON struct {
-	// Param 需要json序列化的参数
+	// param 需要json序列化的参数
 	// 若类型是 string/[]byte 则，按 json 字符串处理
-	// 若其他类型，则按 json 进行序列化
+	// 若其他类型，则按 json 格式进行序列化
 	param interface{}
 }
 

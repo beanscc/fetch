@@ -23,3 +23,19 @@ func newRequest() *request {
 		body:   nil,
 	}
 }
+
+// 检查method是否允许设置body
+func allowBody(method string) bool {
+	allowed := []string{
+		http.MethodPost,
+		http.MethodPut,
+	}
+
+	for _, v := range allowed {
+		if v == method {
+			return true
+		}
+	}
+
+	return false
+}
