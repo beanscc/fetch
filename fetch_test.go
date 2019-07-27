@@ -3,7 +3,6 @@ package fetch
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,8 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/beanscc/fetch/body"
 )
 
 func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
@@ -51,38 +48,38 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 	return resp, err
 }
 
-func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
-	log.Printf("[retry_1] start")
-
-	var (
-		resp *http.Response
-		err  error
-	)
-
-	err = Retry(3*time.Second, 3, func(n int) error {
-		log.Printf("[retry_1] n=%v", n)
-		resp, err = handler(ctx, req)
-		if err != nil || resp == nil || resp.StatusCode != 500 {
-			if n == 2 { // 模拟第二次重试时，达到预期
-				return nil
-			}
-			return errors.New("[retry_1] has err. want retry")
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		log.Printf("[retry_1] retry failed. err=%v", err)
-		return resp, err
-	}
-	var b []byte
-	b, resp.Body, err = DrainBody(resp.Body)
-	log.Printf("[retry_1] resp.Body=%s..., err=%v", b[:100], err)
-	log.Printf("[retry_1] end")
-
-	return resp, err
-}
+// func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
+// 	log.Printf("[retry_1] start")
+//
+// 	var (
+// 		resp *http.Response
+// 		err  error
+// 	)
+//
+// 	err = Retry(3*time.Second, 3, func(n int) error {
+// 		log.Printf("[retry_1] n=%v", n)
+// 		resp, err = handler(ctx, req)
+// 		if err != nil || resp == nil || resp.StatusCode != 500 {
+// 			if n == 2 { // 模拟第二次重试时，达到预期
+// 				return nil
+// 			}
+// 			return errors.New("[retry_1] has err. want retry")
+// 		}
+//
+// 		return nil
+// 	})
+//
+// 	if err != nil {
+// 		log.Printf("[retry_1] retry failed. err=%v", err)
+// 		return resp, err
+// 	}
+// 	var b []byte
+// 	b, resp.Body, err = DrainBody(resp.Body)
+// 	log.Printf("[retry_1] resp.Body=%s..., err=%v", b[:100], err)
+// 	log.Printf("[retry_1] end")
+//
+// 	return resp, err
+// }
 
 // go test -v -run Test_Fetch_Get
 func Test_Fetch_Get(t *testing.T) {
@@ -152,20 +149,21 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 			Data: string(bb),
 		}
 
-		fmt.Fprintln(w, out.String()+"end")
+		w.Header().Add("X-Request-Id", r.Header.Get("X-Request-Id"))
+		fmt.Fprintln(w, out.String())
 	}))
 
 	f := New(ts.URL)
 
 	f.SetInterceptors(
-		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
+		// InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
 		InterceptorHandler{Name: "filter1", Interceptor: filter1},
-	// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
 	)
 
 	// cUser := map[string]interface{}{
-	// 	"name": "cc",
-	// 	"age":  18,
+	// 	"name":  "cc",
+	// 	"age":   18,
+	// 	"money": 10.0068,
 	// }
 
 	cUserMap := map[string]string{
@@ -173,28 +171,25 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		"age":  "18",
 	}
 
-	fs := []body.File{
-		{
-			Field: "file_1",
-			Name:  "/Users/beanscc/Desktop/min-dx.json",
-		},
-	}
+	// fs := []body.File{
+	// 	{
+	// 		Field: "file_1",
+	// 		Name:  "/Users/beanscc/Desktop/min-dx.json",
+	// 	},
+	// }
 
 	// cUserStr := `{"name": "cc", "age": 18}`
 
 	ctx := context.Background()
-	resp := f.Post(ctx, "/api/v1/user").
+	var sr baseResp
+	err := f.Post(ctx, "/api/v1/user").
 		Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// JSON(cUser).
-		// Form(cUserMap).
-		MultipartForm(cUserMap, fs...).
-		Do()
-
-	_, err := resp.Body()
-
-	var sr baseResp
-	err = resp.BindJSON(&sr)
+		Form(cUserMap).
+		// MultipartForm(cUserMap, fs...).
+		// Timeout(10 * time.Microsecond).
+		BindJSON(&sr)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }

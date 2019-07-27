@@ -16,16 +16,15 @@ import (
 
 // Fetch
 type Fetch struct {
-	client       *http.Client         // client
-	baseURL      string               // client 的基础 url
-	interceptors []InterceptorHandler // 拦截器
-	onceReq      *request             // once req
-	debug        bool                 // debug
-	err          error                // error
-	ctx          context.Context      // ctx
-	timeout      time.Duration        // timeout
-	// retry // retry 可以考虑通过 interceptor 实现
-	bind map[string]binding.Binding // 设置 bind 的实现对象
+	client       *http.Client               // client
+	baseURL      string                     // client 的基础 url
+	interceptors []InterceptorHandler       // 拦截器
+	onceReq      *request                   // once req
+	debug        bool                       // debug
+	err          error                      // error
+	ctx          context.Context            // ctx
+	timeout      time.Duration              // timeout
+	bind         map[string]binding.Binding // 设置 bind 的实现对象
 }
 
 // New return new Fetch
@@ -46,10 +45,10 @@ func New(baseURL string) *Fetch {
 }
 
 // SetInterceptor 注册拦截器
-// 若 name 相同，则后面注册的 interceptor 会覆盖之前的 interceptor
+// 若 name 相同，则后注册的 interceptor 会覆盖之前的 interceptor
 func (f *Fetch) SetInterceptor(name string, interceptor Interceptor) {
 	if strings.TrimSpace(name) == "" {
-		panic("interceptor's name should not be empty")
+		panic("fetch:interceptor's name should not be empty")
 	}
 	for k, v := range f.interceptors {
 		if v.Name == name {
@@ -90,7 +89,6 @@ func (f *Fetch) Clone() *Fetch {
 	nf.onceReq = newRequest()
 	nf.err = nil
 	nf.ctx = context.Background()
-
 	return nf
 }
 
@@ -114,13 +112,10 @@ func (f *Fetch) Error() error {
 // WithContext return new Fetch with ctx
 func (f *Fetch) WithContext(ctx context.Context) *Fetch {
 	if ctx == nil {
-		panic("nil context")
+		panic("fetch:nil context")
 	}
-	nf := new(Fetch)
-	*nf = *f
+	nf := f.Clone()
 	nf.ctx = ctx
-	nf.onceReq = newRequest()
-	nf.err = nil
 	return nf
 }
 
@@ -129,11 +124,10 @@ func (f *Fetch) Context() context.Context {
 	if f.ctx == nil {
 		return context.Background()
 	}
-
 	return f.ctx
 }
 
-// Debug 开启 Debug 模式
+// Debug 设置 Debug 模式
 func (f *Fetch) Debug(debug bool) *Fetch {
 	f.debug = debug
 	return f
@@ -240,7 +234,6 @@ func (f *Fetch) Body(body body.Body) *Fetch {
 	if body != nil && allowBody(f.onceReq.method) {
 		f.onceReq.body = body
 	}
-
 	return f
 }
 
@@ -274,13 +267,11 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 	if f.onceReq.body != nil {
 		b, err := f.onceReq.body.Body()
 		if err != nil {
-			// todo log
 			return nil, err
 		}
 
 		// 设置 content-type
-		f.onceReq.header.Set(body.HeaderContentType, f.onceReq.body.ContentType())
-
+		f.SetHeader(body.HeaderContentType, f.onceReq.body.ContentType())
 		return b, nil
 	}
 
@@ -289,11 +280,11 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 
 func (f *Fetch) validateDo() error {
 	if f.onceReq.method == "" {
-		return errors.New("empty method. please use method func first. Get()/Post() and so on")
+		return errors.New("fetch:empty method")
 	}
 
 	if f.onceReq.url.String() == "" {
-		return errors.New("empty url. please use method func first. Get()/Post() and so on")
+		return errors.New("fetch:empty url")
 	}
 
 	return nil
@@ -307,8 +298,7 @@ func (f *Fetch) Do() *response {
 
 	err := f.validateDo()
 	if err != nil {
-		f.err = err
-		return newErrResp(f.Error())
+		return newErrResp(err)
 	}
 
 	// 处理 query 参数
@@ -319,18 +309,14 @@ func (f *Fetch) Do() *response {
 	if allowBody(f.onceReq.method) {
 		bb, err = f.handleBody()
 		if err != nil {
-			f.err = err
-			// todo log
-			return newErrResp(f.Error())
+			return newErrResp(err)
 		}
 	}
 
 	// new req
 	req, err := http.NewRequest(f.onceReq.method, f.onceReq.url.String(), bb)
 	if err != nil {
-		f.err = err
-		// todo log
-		return newErrResp(f.Error())
+		return newErrResp(err)
 	}
 
 	// handle header
@@ -348,7 +334,7 @@ func (f *Fetch) Do() *response {
 	}
 
 	// 定义 handle
-	handler := func(ctx context.Context, req *http.Request) (*http.Response, error) {
+	httpDoHandler := func(ctx context.Context, req *http.Request) (*http.Response, error) {
 		req = req.WithContext(ctx)
 
 		if f.debug { // debug req
@@ -368,10 +354,8 @@ func (f *Fetch) Do() *response {
 		return resp, nil
 	}
 
-	// 获取合并后的拦截器
 	interceptor := f.getChainInterceptor()
-	// 执行
-	resp, err := interceptor(f.Context(), req, handler)
+	resp, err := interceptor(f.Context(), req, httpDoHandler)
 	if err != nil {
 		return newErrResp(err)
 	}
@@ -386,7 +370,7 @@ func (f *Fetch) Do() *response {
 	}
 }
 
-// Bind bind 使用已注册的名为 bindType 的bind实现，解析 http 响应
+// Bind 按已注册 bind 类型，解析 http 响应
 func (f *Fetch) Bind(bindType string, v interface{}) error {
 	return f.Do().Bind(bindType, v)
 }

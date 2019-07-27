@@ -32,14 +32,14 @@ func (r *response) Bind(bindType string, v interface{}) error {
 	}
 
 	if r.resp == nil {
-		return errors.New("nil http.Response")
+		return errors.New("fetch:nil http.Response")
 	}
 
 	if b, ok := r.bind[bindType]; ok {
 		return b.Bind(r.resp, r.body, v)
 	}
 
-	return fmt.Errorf("unknown bind type:%v", bindType)
+	return fmt.Errorf("fetch:unknown bind type:%v", bindType)
 }
 
 // BindJSON json 格式解析 body 数据，并绑定至 obj 对象上，obj 必须是指针对象
