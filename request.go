@@ -7,9 +7,9 @@ import (
 	"github.com/beanscc/fetch/body"
 )
 
-var allowedBodyMethods = []string{
-	http.MethodPost,
-	http.MethodPut,
+var allowedBodyMethods = map[string]bool{
+	http.MethodPost: true,
+	http.MethodPut:  true,
 }
 
 type request struct {
@@ -29,13 +29,7 @@ func newRequest() *request {
 	}
 }
 
-// 检查method是否允许设置body
-func allowBody(method string) bool {
-	for _, v := range allowedBodyMethods {
-		if v == method {
-			return true
-		}
-	}
-
-	return false
+// isAllowedBody 检查method是否允许设置body
+func isAllowedBody(method string) bool {
+	return allowedBodyMethods[method]
 }

@@ -18,7 +18,7 @@ type MultipartForm struct {
 // File 文件
 type File struct {
 	Field string // 表单字段
-	Name  string // 文件路径名称
+	Path  string // 文件路径名称
 }
 
 // NewFormDataBody return new MultipartForm
@@ -63,13 +63,13 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 	// 表单文件
 	if len(fd.files) > 0 {
 		for _, f := range fd.files {
-			fh, err := w.CreateFormFile(f.Field, f.Name)
+			fh, err := w.CreateFormFile(f.Field, f.Path)
 			if err != nil {
 				// todo log
 				return nil, err
 			}
 
-			fv, err := ioutil.ReadFile(f.Name)
+			fv, err := ioutil.ReadFile(f.Path)
 			if err != nil {
 				// todo log
 				return nil, err

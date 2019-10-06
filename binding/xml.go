@@ -18,15 +18,15 @@ func (x *XML) Name() string {
 // Bind 将 http.Response 响应解析到 out 对象中
 func (x *XML) Bind(resp *http.Response, body []byte, out interface{}) error {
 	if resp == nil {
-		return errors.New("xml-bind:nil resp")
+		return errors.New("fetch.XML.Bind: nil resp")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("xml-bind:incorrect response status code(%v)", resp.StatusCode)
+		return fmt.Errorf("fetch.XML.Bind: incorrect response status code(%v)", resp.StatusCode)
 	}
 
 	if err := xml.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("xml-bind:%v", err)
+		return fmt.Errorf("fetch.XML.Bind: %v", err)
 	}
 
 	return nil

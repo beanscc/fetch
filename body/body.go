@@ -8,7 +8,7 @@ import (
 type Body interface {
 	// Body 构造http请求body
 	Body() (io.Reader, error)
-	// ContentType 返回 body 体相应的 content-type
+	// ContentType 返回 body 体结构相应的 Header content-type 类型
 	ContentType() string
 }
 

@@ -8,14 +8,13 @@ import (
 // Handler http req handle
 type Handler func(ctx context.Context, req *http.Request) (*http.Response, error)
 
-// Interceptor 请求拦截器
+// InterceptorHandler 请求拦截器
 // 多个 interceptor one,two,three 则执行顺序是 one,two,three 的 handler 调用前的执行流，然后是 handler, 接着是 three,two,one 中 handler 调用之后的执行流
-type Interceptor func(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error)
+type InterceptorHandler func(ctx context.Context, req *http.Request, httpHandler Handler) (*http.Response, error)
 
-// ChainInterceptor 将多个 Interceptor 合并为一个
-func ChainInterceptor(interceptors ...Interceptor) Interceptor {
+// chainInterceptor 将多个 InterceptorHandler 合并为一个
+func chainInterceptor(interceptors ...InterceptorHandler) InterceptorHandler {
 	n := len(interceptors)
-
 	if n > 1 {
 		lastI := n - 1
 		return func(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
@@ -48,8 +47,8 @@ func ChainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 }
 
-// InterceptorHandler ...
-type InterceptorHandler struct {
-	Name        string      // name of Interceptor
-	Interceptor Interceptor // Interceptor
+// Interceptor 拦截器
+type Interceptor struct {
+	Name    string             // name of Interceptor
+	Handler InterceptorHandler // Interceptor handler
 }

@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/beanscc/fetch/body"
 )
 
 func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
@@ -81,46 +83,46 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 // 	return resp, err
 // }
 
-// go test -v -run Test_Fetch_Get
-func Test_Fetch_Get(t *testing.T) {
-	f := New("http://www.dianping.com/")
-	// f.UseInterceptor(filterOk, filter1)
-	f.SetInterceptors(
-		InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
-		InterceptorHandler{Name: "filter1", Interceptor: filter1},
-		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
-	)
-
-	ctx := context.Background()
-
-	resp := f.Get(ctx, "/bar/search").
-		Debug(true).
-		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", "2").
-		Do()
-	_, err := resp.Body()
-	// out, err := resp.Body()
-	// t.Logf("err=%v, out=%#v", err, string(out))
-
-	type searchResp struct {
-		List []struct {
-			Value struct {
-				SubTag          string `json:"subtag" xml:"subtag"`
-				Location        string `json:"location"`
-				MainCategoryIDS string `json:"maincategoryids"`
-				DataType        string `json:"datatype"`
-				ID              int    `json:"id_,string"`
-				KeyWord         string `json:"suggestKeyWord"`
-			} `json:"valueMap"`
-		} `json:"recordList"`
-		Code int `json:"code"`
-	}
-
-	var sr searchResp
-	// err = resp.BindJSON(&sr)
-	err = resp.Bind("json", &sr)
-	t.Logf("err=%v, resp=%#v", err, sr)
-}
+// // go test -v -run Test_Fetch_Get
+// func Test_Fetch_Get(t *testing.T) {
+// 	f := New("http://www.dianping.com/")
+// 	// f.UseInterceptor(filterOk, filter1)
+// 	f.SetInterceptors(
+// 		Interceptor{Name: "filterOk", Handler: filterOk},
+// 		Interceptor{Name: "filter1", Handler: filter1},
+// 		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
+// 	)
+//
+// 	ctx := context.Background()
+//
+// 	resp := f.Get(ctx, "/bar/search").
+// 		Debug(true).
+// 		// Timeout(100*time.Millisecond).  // 超时
+// 		Query("cityId", "2").
+// 		Do()
+// 	_, err := resp.Body()
+// 	// out, err := resp.Body()
+// 	// t.Logf("err=%v, out=%#v", err, string(out))
+//
+// 	type searchResp struct {
+// 		List []struct {
+// 			Value struct {
+// 				SubTag          string `json:"subtag" xml:"subtag"`
+// 				Location        string `json:"location"`
+// 				MainCategoryIDS string `json:"maincategoryids"`
+// 				DataType        string `json:"datatype"`
+// 				ID              int    `json:"id_,string"`
+// 				KeyWord         string `json:"suggestKeyWord"`
+// 			} `json:"valueMap"`
+// 		} `json:"recordList"`
+// 		Code int `json:"code"`
+// 	}
+//
+// 	var sr searchResp
+// 	// err = resp.BindJSON(&sr)
+// 	err = resp.Bind("json", &sr)
+// 	t.Logf("err=%v, resp=%#v", err, sr)
+// }
 
 type baseResp struct {
 	Data interface{} `json:"data"`
@@ -154,10 +156,9 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	}))
 
 	f := New(ts.URL)
-
 	f.SetInterceptors(
-		// InterceptorHandler{Name: "filterOk", Interceptor: filterOk},
-		InterceptorHandler{Name: "filter1", Interceptor: filter1},
+		// Interceptor{Name: "filterOk", Handler: filterOk},
+		Interceptor{Name: "filter1", Handler: filter1},
 	)
 
 	// cUser := map[string]interface{}{
@@ -171,12 +172,13 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		"age":  "18",
 	}
 
-	// fs := []body.File{
-	// 	{
-	// 		Field: "file_1",
-	// 		Name:  "/Users/beanscc/Desktop/min-dx.json",
-	// 	},
-	// }
+	fs := []body.File{
+		{
+			Field: "file_1",
+			// Path:  "/Users/beanscc/Desktop/min-dx.json",
+			Path: "/home/beanscc/Postman/files/f1.txt",
+		},
+	}
 
 	// cUserStr := `{"name": "cc", "age": 18}`
 
@@ -187,8 +189,8 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// JSON(cUser).
-		Form(cUserMap).
-		// MultipartForm(cUserMap, fs...).
+		// Form(cUserMap).
+		MultipartForm(cUserMap, fs...).
 		// Timeout(10 * time.Microsecond).
 		BindJSON(&sr)
 	t.Logf("err=%v, resp=%#v", err, sr)

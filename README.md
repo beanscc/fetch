@@ -1,16 +1,90 @@
 # fetch
 http 网络请求封装
 
-## todo
+## Overview
+
+涵盖功能
+
+todo
 - 支持自定义 log 打印请求和响应日志
 - 完善 test
 - 完善 example
 - 完善 文档
 
+
+## Quick Start
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/beanscc/fetch"
+)
+
+func main() {
+	f := fetch.New("http://www.dianping.com")
+	f.SetInterceptors(
+		fetch.Interceptor{Name: "log", Handler: interceptorLog},
+	)
+	f.Debug(true).
+		Timeout(3 * time.Second)
+
+	type searchResp struct {
+		List []struct {
+			Value struct {
+				SubTag          string `json:"subtag" xml:"subtag"`
+				Location        string `json:"location"`
+				MainCategoryIDS string `json:"maincategoryids"`
+				DataType        string `json:"datatype"`
+				ID              int    `json:"id_,string"`
+				KeyWord         string `json:"suggestKeyWord"`
+			} `json:"valueMap"`
+		} `json:"recordList"`
+		Code int `json:"code"`
+	}
+
+	var sr searchResp
+
+	err := f.Get(context.Background(), "/bar/search").
+		// Timeout(100*time.Millisecond).  // 超时
+		Query("cityId", "2").
+		BindJSON(&sr)
+	fmt.Printf("err=%v, res=%v", err, sr)
+}
+
+func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, error) {
+	log.Printf("[log] start ...")
+	resp, err := handler(ctx, req)
+	if err != nil {
+		log.Printf("[log] handler failed. err=%v", err)
+		return resp, err
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("[log] http.StatusCode = ok")
+		var b []byte
+		b, resp.Body, err = fetch.DrainBody(resp.Body)
+		log.Printf("[log] resp.Body=%s, err=%v", b, err)
+	}
+
+	log.Printf("[log] end ...")
+	return resp, err
+}
+```
+
+
 ## 设置服务基础域名地址
 
 ```go
-func New(baseUrl string) *Fetch {}
+f := fetch.New("http://www.dianping.com").Debug(true)
+
+res, err := f.Get(context.Background(), "city").Text()
 ```
 
 ## 设置请求方法和接口路径
@@ -35,48 +109,231 @@ func Head(ctx context.Context, path string) *Fetch {}
 func Option(ctx context.Context, path string) *Fetch {}
 ```
 
-## 请求 path 参数设置
+每个 method() 都将返回一个新的*Fetch 对象，该对象包含原 *Fetch 对象属性所有属性（除了 req 和 ctx 参数）
+
+所以，若在 method() 方法后，进行非链式操作，必须使用某个变量接收 method() 方法或其链式操作后返回的新 *Fetch 对象
 
 ```go
-// path 所有参数都存储在 map[string]string 这个数据结构中
 
-// Query 加单个参数
-func Query(key, value string) *Fetch {}
+f.Get(ctx, "city")  // 需要接收 Get() 返回的新 *Fetch 对象，下面的操作才不会出错， But 将下面的操作合并过来组成一个链式操作，则不会出错, 如： b, err := f.Get(ctx, "city").Query("id", "1").Text() // ok
 
-// 一次设置多个参数
-func QueryMany(p map[string]string) *Fetch {}
+b, err := f.Query("id", "1").Text() // err != nil, err="fetch: empty method"
 ```
 
-## 请求 header 参数设置
-
-所有 header 参数都存储在 http.Header 结构中
+## 请求 Query 参数设置
 
 ```go
-func AddHeader(key, value string) *Fetch {}
+f = f.Get(ctx, "city")
 
-func SetHeader(key, value string) *Fetch {}
+// query 参数一个一个设置
+f.Query("id", "1").Query("type", "2")
+
+// 或通过 map 一次设置
+f.QueryMany(map[string]string{
+    "id":   "1",
+    "type": "2",
+})
+
+// 也可以组合设置
+f.Query("id", "1").QueryMany(map[string]string{
+    "type": "2",
+})
 ```
 
-## 请求 body 参数设置
+## 请求 Header 参数设置
 
-所有的 body 参数都以 io.Reader 接口形式传入，各不同类型的body消息体，实现一个接口用来获取 body 的 io.Reader 接口数据
+```go
+f = f.Get(ctx, "city")
 
-### json content-type json
+f.AddHeader("token", "token:a30e1a40-39d6-47ec-aac8-19f6258d8718").
+	AddHeader("x-request-id", "997ba960-a512-49fc-8464-8c6685aee529").
+	AddHeader("app-id", "fetch-v-4")
 
-### form 表单 content-type form-data
+f.SetHeader("app-id", "fetch-v-5") // 将覆盖上面 "app-id" 的值为 "fetch-v-5"
+```
 
-### form urlencoded content-type x-www-form-urlencoded
+## 请求 Body 参数设置
 
-### 发送文件
+
+```go
+// import "github.com/beanscc/fetch/body"
+// Body 构造请求的body
+type Body interface {
+	// Body 构造http请求body
+	Body() (io.Reader, error)
+	// ContentType 返回 body 体结构相应的 Header content-type 类型
+	ContentType() string
+}
+
+// Body 接口实现检查
+var (
+	_ Body = &JSON{}
+	_ Body = &XML{}
+	_ Body = &Form{}
+	_ Body = &MultipartForm{}
+)
+```
+
+### 发送 json 数据
+
+Content-Type: "application/json"
+
+```go
+f := f.Post(ctx, "user")
+
+// 支持 string 类型 json 字符串
+f.JSON(`{"name": "alice", "age": 12}`)
+
+// 支持 []byte 类型 json
+f.JSON([]byte(`{"name": "alice", "age": 12}`))
+
+// 非 string / []byte 类型，将都调用 json.Marshal 进行序列化
+f.JSON(map[string]interface{}{
+	"name": "alice",
+	"age": 12,
+})
+
+type User struct {
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+user := User{Name:"alice", Age:12}
+f.JSON(user)
+```
+
+### 发送 xml 格式数据
+
+Content-Type: "application/xml"
+
+xml 数据发送和 json 数据支持格式一样
+
+```go
+f := f.Post(ctx, "user")
+
+xmlStr :=`
+<note>
+    <to>George</to>
+    <from>John</from>
+    <heading>Reminder</heading>
+    <body>Don't forget the meeting!</body>
+</note>
+`
+
+f.XML(xmlStr)
+```
+
+### 发送表单：application/x-www-form-urlencoded
+
+Content-Type: "application/x-www-form-urlencoded"
+
+```go
+f := f.Post(ctx, "user")
+
+f.Form(map[string]string{
+	"name": "alice",
+	"age": "12",
+})
+```
+
+### 发送表单: multipart/form-data
+
+Content-Type: "multipart/form-data"
+
+一般需要上传文件时，才使用这种类型
+
+```go
+f := f.Post(ctx, "user")
+
+f.Form(map[string]string{
+	"name": "alice",
+	"age": "12",
+}, []body.File{
+	{Field:"f1", Path:"f1.txt"},
+})
+```
+
+## 响应解析
+
+```go
+f := f.Post(ctx, "user")
+
+// 支持 string 类型 json 字符串
+f.JSON(`{"name": "alice", "age": 12}`)
+
+// 获取 http.Response
+res, err := f.Resp()
+
+// 获取 http 响应 body 消息体的 []byte
+resBytes, err := f.Bytes()
+
+// 获取 http 响应 body 消息体的 string
+resStr, err := f.Text()
+
+// ==== 对响应body消息体进行结构化解析 ====
+
+// 以 json 格式解析 
+err := f.BindJSON(resJson)
+
+// 以 xml 格式解析
+err := f.BindXML(resXml)
+
+// 以其他 自定义 格式解析，若以这种方式解析，请确认向 Fetch 对象注册过该 bind-type 对应的解析 func
+err := f.Bind("customer-bind-type", resCustomerBindRes)
+```
+
+`fetch.New()` 创建的 Fetch 对象已注册了默认的 `json` 和 `xml` 格式解析函数
+
+如何设置自定义解析器？
+
+```go
+f := fetch.New("http://www.dianping.com")
+
+// 设置 单个 解析器
+f.SetBind("my-json",  myJSONBind) // myJSONBind 必须实现 github.com/beanscc/fetch/binding.Binding 接口
+
+// 一次设置多个解析器
+f.SetBinds(map[string]binding.Binding{
+	"json": &binding.JSON{},
+	"xml": &binding.XML{}
+})
+```
+
+## Debug
+
+debug 默认是 false 关闭状态，若设置为 true，则为开启状态。
+
+debug 开启状态下，会以 log 形式输出请求和响应的信息
+
+```go
+f := fetch.New("http://www.dianping.com").Debug(true)
+```
+
+## 超时控制
+
+```go
+// 方式1. 通过 ctx
+func WithContext(ctx context.Context) *Fetch {}
+
+// 方式2. 通过 timeout
+func Timeout(t time.Duration) *Fetch {}
+```
+
+## Auth 认证
+
+```go
+func BasicAuth(user, passwd string) *Fetch {}
+```
 
 ## Interceptor 拦截器
 
 拦截器有 2 个拦截点
 - 发送 http 请求前，对请求进行拦截，可对请求数据进行预处理
-- 请求发送后，对响应进行拦截，可对响应进行一些处理
+- 请求发送后，对响应进行拦截，可对响应进行预处理
 
-多个拦截器是如何运作的？
+多个拦截器的执行顺序是什么？
 先来看一下关于拦截器的定义
+
 ```go
 // Handler 执行 http 请求
 type Handler func(ctx context.Context, req *http.Request) (*http.Response, error)
@@ -143,14 +400,12 @@ var (
 	err error
 )
 // 读取响应body消息体，并重置响应body
-b, resp.Body, err = DrainBody(resp.Body)
+b, resp.Body, err = fetch.DrainBody(resp.Body)
 ```
  
  
 拦截器可以做什么？
-
-通过拦截器可以做很多事，如
-- 记录每次请求及响应数据的log信息
+- 记录每次请求及响应数据的日志信息
 - 在请求前对参数进行签名
 - 请求前对参数/body消息体进行加密，响应后对消息体进行加解密
 - 自定义请求进行重试，按需自定义何种情况/多少时间间隔/重试多少次
@@ -158,91 +413,11 @@ b, resp.Body, err = DrainBody(resp.Body)
 
 请注意拦截器执行的顺序流程，合理安排多个拦截器之间的顺序关系
 
-
 如何注册拦截器？
 
-todo
-
-
-## 重试机制
-
-重试机制，通过 Interceptor 来实现
-
-首先，自定义关于重试的 Interceptor
-然后，向 Fetch 对象注册 retry 拦截器 
-
 ```go
-func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
-	log.Printf("[retry_1] start")
-
-	var (
-		resp *http.Response
-		err  error
-	)
-
-	err = Retry(3*time.Second, 3, func(n int) error {
-		log.Printf("[retry_1] n=%v", n)
-		resp, err = handler(ctx, req)
-		if err != nil || resp == nil || resp.StatusCode != 500 {
-			if n == 2 { // 模拟第二次重试时，达到预期
-				return nil
-			}
-			return errors.New("[retry_1] has err. want retry")
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		log.Printf("[retry_1] retry failed. err=%v", err)
-		return resp, err
-	}
-	var b []byte
-	b, resp.Body, err = DrainBody(resp.Body)
-	log.Printf("[retry_1] resp.Body=%s..., err=%v", b[:100], err)
-	log.Printf("[retry_1] end")
-
-	return resp, err
-}
-```
-
-## 超时机制
-
-```go
-// 超时有 2 中方式
-
-// 方式1. 通过 ctx
-func WithContext(ctx context.Context) *Fetch {}
-
-// 方式2. 通过 timeout
-func Timeout(t time.Duration) *Fetch {}
-```
-
-## Auth 认证
-
-```go
-func BasicAuth(user, passwd string) *Fetch {}
-```
-
-## 执行 Do
-
-```go
-func Do() (*response, error) {}
-```
-
-## response 解析
-
-支持自定义对请求响应的解析
-
-`SetBind("json", &binding.JSON{})`
-
-以注册的 json 解析器去解析响应 `Bind("json", &out)` 或 `BindJSON(&out)`
-
-
-```go
-var a someType
-if err := resp.BindJSON(&a); err != ni {
-	// handle err log
-	return err
-}
+f.SetInterceptors(
+	// Interceptor{Name: "filterOk", Handler: filterOk},
+	fetch.Interceptor{Name: "filter1", Handler: filter1}, 
+)
 ```

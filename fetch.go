@@ -3,6 +3,7 @@ package fetch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,15 +17,16 @@ import (
 
 // Fetch
 type Fetch struct {
-	client       *http.Client               // client
-	baseURL      string                     // client 的基础 url
-	interceptors []InterceptorHandler       // 拦截器
-	onceReq      *request                   // once req
-	debug        bool                       // debug
-	err          error                      // error
-	ctx          context.Context            // ctx
-	timeout      time.Duration              // timeout
-	bind         map[string]binding.Binding // 设置 bind 的实现对象
+	client                  *http.Client               // client
+	baseURL                 string                     // client 的基础 url
+	interceptors            []Interceptor              // 拦截器
+	chainInterceptorHandler InterceptorHandler         // 链式拦截器，由注册的拦截器合并而来
+	onceReq                 *request                   // once req
+	debug                   bool                       // debug
+	err                     error                      // error
+	ctx                     context.Context            // ctx
+	timeout                 time.Duration              // timeout
+	bind                    map[string]binding.Binding // 设置 bind 的实现对象
 }
 
 // New return new Fetch
@@ -32,7 +34,7 @@ func New(baseURL string) *Fetch {
 	return &Fetch{
 		client:       http.DefaultClient,
 		baseURL:      baseURL,
-		interceptors: make([]InterceptorHandler, 0),
+		interceptors: make([]Interceptor, 0),
 		onceReq:      newRequest(),
 		debug:        false,
 		err:          nil,
@@ -42,42 +44,6 @@ func New(baseURL string) *Fetch {
 			"xml":  &binding.XML{},
 		},
 	}
-}
-
-// SetInterceptor 注册拦截器
-// 若 name 相同，则后注册的 interceptor 会覆盖之前的 interceptor
-func (f *Fetch) SetInterceptor(name string, interceptor Interceptor) {
-	if strings.TrimSpace(name) == "" {
-		panic("fetch:interceptor's name should not be empty")
-	}
-	for k, v := range f.interceptors {
-		if v.Name == name {
-			f.interceptors[k].Interceptor = interceptor
-			return
-		}
-	}
-
-	f.interceptors = append(f.interceptors, InterceptorHandler{
-		Name:        name,
-		Interceptor: interceptor,
-	})
-}
-
-// SetInterceptors 一次注册多个拦截器
-func (f *Fetch) SetInterceptors(interceptors ...InterceptorHandler) {
-	for _, v := range interceptors {
-		f.SetInterceptor(v.Name, v.Interceptor)
-	}
-}
-
-// getChainInterceptor 获取拦截器合并后的拦截器
-func (f *Fetch) getChainInterceptor() Interceptor {
-	interceptors := make([]Interceptor, 0, len(f.interceptors))
-	for _, v := range f.interceptors {
-		interceptors = append(interceptors, v.Interceptor)
-	}
-	// 合并拦截器
-	return ChainInterceptor(interceptors...)
 }
 
 // Clone return a clone Fetch
@@ -92,27 +58,10 @@ func (f *Fetch) Clone() *Fetch {
 	return nf
 }
 
-// SetBind 设置 bind
-func (f *Fetch) SetBind(key string, bind binding.Binding) {
-	f.bind[key] = bind
-}
-
-// SetBinds 设置多个 bind
-func (f *Fetch) SetBinds(b map[string]binding.Binding) {
-	for k, v := range b {
-		f.SetBind(k, v)
-	}
-}
-
-// Error return err
-func (f *Fetch) Error() error {
-	return f.err
-}
-
 // WithContext return new Fetch with ctx
 func (f *Fetch) WithContext(ctx context.Context) *Fetch {
 	if ctx == nil {
-		panic("fetch:nil context")
+		panic("fetch: nil context")
 	}
 	nf := f.Clone()
 	nf.ctx = ctx
@@ -125,6 +74,63 @@ func (f *Fetch) Context() context.Context {
 		return context.Background()
 	}
 	return f.ctx
+}
+
+func (f *Fetch) setInterceptor(interceptor Interceptor) {
+	if strings.TrimSpace(interceptor.Name) == "" {
+		panic("fetch: empty interceptor.Name")
+	}
+
+	if interceptor.Handler == nil {
+		panic("fetch: nil interceptor.Handler")
+	}
+
+	for ii, vv := range f.interceptors {
+		if vv.Name == interceptor.Name {
+			f.interceptors[ii].Handler = interceptor.Handler // update handle
+			return
+		}
+	}
+
+	f.interceptors = append(f.interceptors, interceptor)
+}
+
+// SetInterceptors 注册拦截器，然后合并为一个链式拦截器
+func (f *Fetch) SetInterceptors(interceptors ...Interceptor) *Fetch {
+	for _, v := range interceptors {
+		f.setInterceptor(v)
+	}
+	f.chainInterceptor()
+	return f
+}
+
+// chainInterceptor 合并拦截器
+func (f *Fetch) chainInterceptor() {
+	interceptors := make([]InterceptorHandler, 0, len(f.interceptors))
+	for _, v := range f.interceptors {
+		interceptors = append(interceptors, v.Handler)
+	}
+	f.chainInterceptorHandler = chainInterceptor(interceptors...)
+}
+
+// SetBind 设置 bind
+func (f *Fetch) SetBind(key string, bind binding.Binding) *Fetch {
+	f.bind[key] = bind
+	return f
+}
+
+// SetBinds 设置多个 bind
+func (f *Fetch) SetBinds(b map[string]binding.Binding) *Fetch {
+	for k, v := range b {
+		f.SetBind(k, v)
+	}
+
+	return f
+}
+
+// Error return err
+func (f *Fetch) Error() error {
+	return f.err
 }
 
 // Debug 设置 Debug 模式
@@ -231,7 +237,7 @@ func (f *Fetch) SetHeader(key, value string) *Fetch {
 
 // Send 设置请求的 body 消息体
 func (f *Fetch) Body(body body.Body) *Fetch {
-	if body != nil && allowBody(f.onceReq.method) {
+	if body != nil {
 		f.onceReq.body = body
 	}
 	return f
@@ -280,18 +286,18 @@ func (f *Fetch) handleBody() (io.Reader, error) {
 
 func (f *Fetch) validateDo() error {
 	if f.onceReq.method == "" {
-		return errors.New("fetch:empty method")
+		return errors.New("fetch: empty method")
 	}
 
 	if f.onceReq.url.String() == "" {
-		return errors.New("fetch:empty url")
+		return errors.New("fetch: empty url")
 	}
 
 	return nil
 }
 
-// Do 执行 http 请求
-func (f *Fetch) Do() *response {
+// do 执行 http 请求
+func (f *Fetch) do() *response {
 	if f.Error() != nil {
 		return newErrResp(f.Error())
 	}
@@ -306,7 +312,7 @@ func (f *Fetch) Do() *response {
 
 	// 处理 body
 	var bb io.Reader
-	if allowBody(f.onceReq.method) {
+	if isAllowedBody(f.onceReq.method) {
 		bb, err = f.handleBody()
 		if err != nil {
 			return newErrResp(err)
@@ -354,8 +360,7 @@ func (f *Fetch) Do() *response {
 		return resp, nil
 	}
 
-	interceptor := f.getChainInterceptor()
-	resp, err := interceptor(f.Context(), req, httpDoHandler)
+	resp, err := f.chainInterceptorHandler(f.Context(), req, httpDoHandler)
 	if err != nil {
 		return newErrResp(err)
 	}
@@ -366,26 +371,49 @@ func (f *Fetch) Do() *response {
 		resp: resp,
 		body: b,
 		err:  err,
-		bind: f.bind,
+		// bind: f.bind,
 	}
 }
 
 // Bind 按已注册 bind 类型，解析 http 响应
 func (f *Fetch) Bind(bindType string, v interface{}) error {
-	return f.Do().Bind(bindType, v)
+	r := f.do()
+	if r.err != nil {
+		return r.err
+	}
+
+	if r.resp == nil {
+		return errors.New("fetch: nil http.Response")
+	}
+
+	if b, ok := f.bind[bindType]; ok {
+		return b.Bind(r.resp, r.body, v)
+	}
+
+	return fmt.Errorf("fetch: unknown bind type:%v", bindType)
 }
 
 // BindJSON bind http.Body with json
 func (f *Fetch) BindJSON(v interface{}) error {
-	return f.Do().BindJSON(v)
+	return f.Bind("json", v)
 }
 
 // BindXML bind http.Body with xml
 func (f *Fetch) BindXML(v interface{}) error {
-	return f.Do().BindXML(v)
+	return f.Bind("xml", v)
 }
 
 // Resp return http.Response
 func (f *Fetch) Resp() (*http.Response, error) {
-	return f.Do().Resp()
+	return f.do().Resp()
+}
+
+// Bytes 返回http响应body消息体
+func (f *Fetch) Bytes() ([]byte, error) {
+	return f.do().Bytes()
+}
+
+// Text 返回http响应body消息体
+func (f *Fetch) Text() (string, error) {
+	return f.do().Text()
 }
