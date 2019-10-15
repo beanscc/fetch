@@ -182,6 +182,14 @@ func (f *Fetch) Delete(ctx context.Context, path string) *Fetch {
 	return nf
 }
 
+// Head 请求
+func (f *Fetch) Head(ctx context.Context, path string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethod(http.MethodHead)
+	nf.setPath(path)
+	return nf
+}
+
 // setPath 设置 URL path
 func (f *Fetch) setPath(URLPath string) {
 	if f.Error() != nil {
