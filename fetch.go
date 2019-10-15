@@ -389,6 +389,10 @@ func (f *Fetch) do() *response {
 		return resp, nil
 	}
 
+	if f.chainInterceptorHandler == nil {
+		f.chainInterceptor()
+	}
+
 	resp, err := f.chainInterceptorHandler(f.Context(), req, httpDoHandler)
 	if err != nil {
 		return newErrResp(err)
