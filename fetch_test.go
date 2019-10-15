@@ -175,8 +175,7 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	fs := []body.File{
 		{
 			Field: "file_1",
-			// Path:  "/Users/beanscc/Desktop/min-dx.json",
-			Path: "/home/beanscc/Postman/files/f1.txt",
+			Path:  "testdata/f1.txt",
 		},
 	}
 

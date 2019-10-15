@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"time"
 
@@ -27,6 +26,28 @@ type Fetch struct {
 	ctx                     context.Context            // ctx
 	timeout                 time.Duration              // timeout
 	bind                    map[string]binding.Binding // 设置 bind 的实现对象
+}
+
+var defaultFetch = New("")
+
+func Get(ctx context.Context, path string) *Fetch {
+	return defaultFetch.Get(ctx, path)
+}
+
+func Post(ctx context.Context, path string) *Fetch {
+	return defaultFetch.Post(ctx, path)
+}
+
+func Put(ctx context.Context, path string) *Fetch {
+	return defaultFetch.Put(ctx, path)
+}
+
+func Delete(ctx context.Context, path string) *Fetch {
+	return defaultFetch.Delete(ctx, path)
+}
+
+func Head(ctx context.Context, path string) *Fetch {
+	return defaultFetch.Head(ctx, path)
 }
 
 // New return new Fetch
@@ -198,7 +219,7 @@ func (f *Fetch) setPath(URLPath string) {
 
 	u, err := url.Parse(f.baseURL)
 	if u != nil {
-		u.Path = path.Join(u.Path, URLPath)
+		u, err = u.Parse(URLPath)
 	}
 
 	f.onceReq.url = u
@@ -379,7 +400,6 @@ func (f *Fetch) do() *response {
 		resp: resp,
 		body: b,
 		err:  err,
-		// bind: f.bind,
 	}
 }
 
