@@ -369,7 +369,7 @@ func (f *Fetch) do() *response {
 	}
 
 	// 定义 handle
-	httpDoHandler := func(ctx context.Context, req *http.Request) (*http.Response, error) {
+	httpDoHandler := func(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
 		req = req.WithContext(ctx)
 
 		if f.debug { // debug req
@@ -378,7 +378,7 @@ func (f *Fetch) do() *response {
 
 		resp, err := f.client.Do(req)
 		if err != nil {
-			return resp, err
+			return resp, nil, err
 		}
 		defer resp.Body.Close()
 
@@ -386,20 +386,16 @@ func (f *Fetch) do() *response {
 			_ = debugResponse(resp, true)
 		}
 
-		return resp, nil
+		var b []byte
+		b, resp.Body, err = DrainBody(resp.Body)
+		return resp, b, err
 	}
 
 	if f.chainInterceptorHandler == nil {
 		f.chainInterceptor()
 	}
 
-	resp, err := f.chainInterceptorHandler(f.Context(), req, httpDoHandler)
-	if err != nil {
-		return newErrResp(err)
-	}
-
-	var b []byte
-	b, resp.Body, err = DrainBody(resp.Body)
+	resp, b, err := f.chainInterceptorHandler(f.Context(), req, httpDoHandler)
 	return &response{
 		resp: resp,
 		body: b,

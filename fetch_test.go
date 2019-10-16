@@ -14,12 +14,12 @@ import (
 	"github.com/beanscc/fetch/body"
 )
 
-func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
+func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filterOK] start")
-	resp, err := handler(ctx, req)
+	resp, bb, err := handler(ctx, req)
 	if err != nil {
 		log.Printf("[filterOK] err=%v", err)
-		return resp, err
+		return resp, bb, err
 	}
 
 	if resp.StatusCode == http.StatusOK {
@@ -31,23 +31,24 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 	}
 
 	log.Printf("[filterOK] end")
-	return resp, err
+	return resp, bb, err
 }
 
-func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
+func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filter-1] start")
 	req.Header.Add("x-request-id", "xxxxx")
-	resp, err := handler(ctx, req)
+	var b []byte
+	resp, b, err := handler(ctx, req)
 	if err != nil {
 		log.Printf("[filter-1] err=%v", err)
-		return resp, err
+		return resp, b, err
 	}
-	var b []byte
-	b, resp.Body, err = DrainBody(resp.Body)
+
+	// b, resp.Body, err = DrainBody(resp.Body)
 	log.Printf("[filter-1] resp.Body=%s..., err=%v", b, err)
 	log.Printf("[filter-1] end")
 
-	return resp, err
+	return resp, b, err
 }
 
 // func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
@@ -83,46 +84,41 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 // 	return resp, err
 // }
 
-// // go test -v -run Test_Fetch_Get
-// func Test_Fetch_Get(t *testing.T) {
-// 	f := New("http://www.dianping.com/")
-// 	// f.UseInterceptor(filterOk, filter1)
-// 	f.SetInterceptors(
-// 		Interceptor{Name: "filterOk", Handler: filterOk},
-// 		Interceptor{Name: "filter1", Handler: filter1},
-// 		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
-// 	)
-//
-// 	ctx := context.Background()
-//
-// 	resp := f.Get(ctx, "/bar/search").
-// 		Debug(true).
-// 		// Timeout(100*time.Millisecond).  // 超时
-// 		Query("cityId", "2").
-// 		Do()
-// 	_, err := resp.Body()
-// 	// out, err := resp.Body()
-// 	// t.Logf("err=%v, out=%#v", err, string(out))
-//
-// 	type searchResp struct {
-// 		List []struct {
-// 			Value struct {
-// 				SubTag          string `json:"subtag" xml:"subtag"`
-// 				Location        string `json:"location"`
-// 				MainCategoryIDS string `json:"maincategoryids"`
-// 				DataType        string `json:"datatype"`
-// 				ID              int    `json:"id_,string"`
-// 				KeyWord         string `json:"suggestKeyWord"`
-// 			} `json:"valueMap"`
-// 		} `json:"recordList"`
-// 		Code int `json:"code"`
-// 	}
-//
-// 	var sr searchResp
-// 	// err = resp.BindJSON(&sr)
-// 	err = resp.Bind("json", &sr)
-// 	t.Logf("err=%v, resp=%#v", err, sr)
-// }
+// go test -v -run Test_Fetch_Get
+func Test_Fetch_Get(t *testing.T) {
+	f := New("http://www.dianping.com/")
+	// f.UseInterceptor(filterOk, filter1)
+	f.SetInterceptors(
+		Interceptor{Name: "filterOk", Handler: filterOk},
+		Interceptor{Name: "filter1", Handler: filter1},
+		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
+	)
+
+	type searchResp struct {
+		List []struct {
+			Value struct {
+				SubTag          string `json:"subtag" xml:"subtag"`
+				Location        string `json:"location"`
+				MainCategoryIDS string `json:"maincategoryids"`
+				DataType        string `json:"datatype"`
+				ID              int    `json:"id_,string"`
+				KeyWord         string `json:"suggestKeyWord"`
+			} `json:"valueMap"`
+		} `json:"recordList"`
+		Code int `json:"code"`
+	}
+
+	var sr searchResp
+	// err = resp.BindJSON(&sr)
+	ctx := context.Background()
+
+	err := f.Get(ctx, "/bar/search").
+		Debug(true).
+		// Timeout(100*time.Millisecond).  // 超时
+		Query("cityId", "2").
+		Bind("json", &sr)
+	t.Logf("err=%v, resp=%#v", err, sr)
+}
 
 type baseResp struct {
 	Data interface{} `json:"data"`
@@ -156,10 +152,10 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	}))
 
 	f := New(ts.URL)
-	f.SetInterceptors(
-		// Interceptor{Name: "filterOk", Handler: filterOk},
-		Interceptor{Name: "filter1", Handler: filter1},
-	)
+	// f.SetInterceptors(
+	// 	// Interceptor{Name: "filterOk", Handler: filterOk},
+	// 	Interceptor{Name: "filter1", Handler: filter1},
+	// )
 
 	// cUser := map[string]interface{}{
 	// 	"name":  "cc",
@@ -184,7 +180,7 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	ctx := context.Background()
 	var sr baseResp
 	err := f.Post(ctx, "/api/v1/user").
-		Debug(true).
+		// Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// JSON(cUser).
