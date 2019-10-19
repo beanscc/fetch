@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -43,4 +44,22 @@ func DrainBody(b io.ReadCloser) (rb []byte, nopb io.ReadCloser, err error) {
 		return nil, b, err
 	}
 	return buf.Bytes(), ioutil.NopCloser(bytes.NewReader(buf.Bytes())), nil
+}
+
+// GetReferenceURL resolves a URI reference to an absolute URI from an absolute base URI u, per RFC 3986
+// Section 5.2. The URI reference may be relative or absolute. GetReferenceURL always returns a new URL instance,
+// even if the returned URL is identical to either the base or reference. If ref is an absolute URL, then
+// GetReferenceURL ignores base and returns a copy of ref.
+func GetReferenceURL(base, ref string) (*url.URL, error) {
+	bu, err := url.Parse(base)
+	if err != nil {
+		return bu, err
+	}
+
+	ru, err := url.Parse(ref)
+	if err != nil {
+		return ru, err
+	}
+
+	return bu.ResolveReference(ru), nil
 }

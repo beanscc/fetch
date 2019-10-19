@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -217,13 +216,7 @@ func (f *Fetch) setPath(URLPath string) {
 		return
 	}
 
-	u, err := url.Parse(f.baseURL)
-	if u != nil {
-		u, err = u.Parse(URLPath)
-	}
-
-	f.onceReq.url = u
-	f.err = err
+	f.onceReq.url, f.err = GetReferenceURL(f.baseURL, URLPath)
 }
 
 // Query 设置单个查询参数
