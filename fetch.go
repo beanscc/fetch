@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -16,8 +15,22 @@ import (
 
 // Fetch
 type Fetch struct {
-	client                  *http.Client               // client
-	baseURL                 string                     // client 的基础 url
+	client *http.Client // client
+	// client 的基础 url, 若 baseURL 带有部分 path (eg: host:port/path/), 请在 path 后跟上 "/"
+	// baseURL 和 URLPath 的相对/绝对关系，请参考url.ResolveReference()
+	//
+	// - baseURL: host/v1/api/
+	//		- 若 Get(ctx, "user/profile")，则实际请求的是 host/v1/api/user/profile
+	//		- 若 Get(ctx, "/user/profile")，则实际请求的是 host/user/profile
+	//		- 若 Get(ctx, "/v2/api/user/profile")，则实际请求的是 host/v2/api/user/profile
+	//		- 若 Get(ctx, "../order/detail")，则实际请求的是 host/v1/order/detail
+	// - baseURL: host/v1/api
+	//		- 若 Get(ctx, "user/profile")，则实际请求的是 host/v1/user/profile
+	//		- 若 Get(ctx, "/user/profile")，则实际请求的是 host/user/profile
+	//		- 若 Get(ctx, "/v2/api/user/profile")，则实际请求的是 host/v2/api/user/profile
+	//		- 若 Get(ctx, "api/user/profile")，则实际请求的是 host/v1/api/user/profile
+	//		- 若 Get(ctx, "../order/detail")，则实际请求的是 host/order/detail
+	baseURL                 string
 	interceptors            []Interceptor              // 拦截器
 	chainInterceptorHandler InterceptorHandler         // 链式拦截器，由注册的拦截器合并而来
 	onceReq                 *request                   // once req
@@ -211,19 +224,13 @@ func (f *Fetch) Head(ctx context.Context, path string) *Fetch {
 	return nf
 }
 
-// setPath 设置 URL path
-func (f *Fetch) setPath(URLPath string) {
+// setPath 设置 refPath
+func (f *Fetch) setPath(refPath string) {
 	if f.Error() != nil {
 		return
 	}
 
-	u, err := url.Parse(f.baseURL)
-	if u != nil {
-		u, err = u.Parse(URLPath)
-	}
-
-	f.onceReq.url = u
-	f.err = err
+	f.onceReq.url, f.err = ResolveReferenceURL(f.baseURL, refPath)
 }
 
 // Query 设置单个查询参数
