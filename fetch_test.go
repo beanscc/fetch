@@ -151,7 +151,7 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		fmt.Fprintln(w, out.String())
 	}))
 
-	f := New(ts.URL)
+	// f := New("")
 	// f.SetInterceptors(
 	// 	// Interceptor{Name: "filterOk", Handler: filterOk},
 	// 	Interceptor{Name: "filter1", Handler: filter1},
@@ -179,8 +179,8 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 
 	ctx := context.Background()
 	var sr baseResp
-	err := f.Post(ctx, "/api/v1/user").
-		// Debug(true).
+	err := New(ts.URL+"/api/").Post(ctx, "user").
+		Debug(true).
 		Query("t", time.Now().String()).
 		Query("nonce", "xxxxss--sss---xx").
 		// JSON(cUser).
