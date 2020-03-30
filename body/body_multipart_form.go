@@ -30,7 +30,7 @@ func NewMultipartForm(uv url.Values, fs ...File) *MultipartForm {
 }
 
 // NewMultipartFormFromMap return new MultipartForm from map
-func NewMultipartFormFromMap(m map[string]string, fs ...File) *MultipartForm {
+func NewMultipartFormFromMap(m map[string]interface{}, fs ...File) *MultipartForm {
 	uv := getValues(m)
 	return NewMultipartForm(uv, fs...)
 }
@@ -40,12 +40,7 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 	// 构造 form-data
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	defer func() {
-		if err := w.Close(); err != nil {
-			// todo log
-			// fmt.Errorf("error when closing multipart form writer: %s", err)
-		}
-	}()
+	defer w.Close()
 
 	// content-type
 	fd.contentType = w.FormDataContentType()
@@ -54,7 +49,6 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 	for k, v := range fd.param {
 		for _, vv := range v {
 			if err := w.WriteField(k, vv); err != nil {
-				// todo log
 				return nil, err
 			}
 		}
@@ -65,18 +59,15 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 		for _, f := range fd.files {
 			fh, err := w.CreateFormFile(f.Field, f.Path)
 			if err != nil {
-				// todo log
 				return nil, err
 			}
 
 			fv, err := ioutil.ReadFile(f.Path)
 			if err != nil {
-				// todo log
 				return nil, err
 			}
 
 			if _, err := fh.Write(fv); err != nil {
-				// todo log
 				return nil, err
 			}
 		}

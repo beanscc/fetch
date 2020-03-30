@@ -1,11 +1,13 @@
-package fetch
+package util
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -57,4 +59,47 @@ func ResolveReferenceURL(base, ref string) (*url.URL, error) {
 	}
 
 	return bu.Parse(ref)
+}
+
+// ToString convert v to string
+func ToString(v interface{}) string {
+	var s string
+	switch v.(type) {
+	case string:
+		s = v.(string)
+	case []byte:
+		s = string(v.([]byte))
+	case []rune:
+		s = string(v.([]rune))
+	case int:
+		s = strconv.Itoa(v.(int))
+	case int8:
+		s = strconv.Itoa(int(v.(int8)))
+	case int16:
+		s = strconv.Itoa(int(v.(int16)))
+	case int32: // as rune
+		s = strconv.FormatInt(int64(v.(int32)), 10)
+	case int64:
+		s = strconv.FormatInt(v.(int64), 10)
+	case uint:
+		s = strconv.FormatUint(uint64(v.(uint)), 10)
+	case uint8: // as byte
+		s = strconv.FormatUint(uint64(v.(uint8)), 10)
+	case uint16:
+		s = strconv.FormatUint(uint64(v.(uint16)), 10)
+	case uint32:
+		s = strconv.FormatUint(uint64(v.(uint32)), 10)
+	case uint64:
+		s = strconv.FormatUint(v.(uint64), 10)
+	case float32:
+		s = strconv.FormatFloat(float64(v.(float32)), 'f', 9, 64)
+	case float64:
+		s = strconv.FormatFloat(v.(float64), 'f', 9, 64)
+	case bool:
+		s = strconv.FormatBool(v.(bool))
+	default:
+		s = fmt.Sprint(v)
+	}
+
+	return s
 }
