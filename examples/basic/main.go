@@ -11,13 +11,6 @@ import (
 )
 
 func main() {
-	f := fetch.New("http://www.dianping.com")
-	f.SetInterceptors(
-		fetch.Interceptor{Name: "log", Handler: interceptorLog},
-	)
-	f.Debug(true).
-		Timeout(3 * time.Second)
-
 	type searchResp struct {
 		List []struct {
 			Value struct {
@@ -34,9 +27,16 @@ func main() {
 
 	var sr, sr2 searchResp
 
+	f := fetch.New("https://www.dianping.com",
+		fetch.Debug(false),
+		// fetch.Interceptors(interceptorLog),
+		fetch.Interceptors(fetch.LogInterceptor(nil)),
+		fetch.Timeout(3*time.Second),
+	)
 	err := f.Get(context.Background(), "/bar/search").
 		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", "2").
+		Query("cityId", 2).
+		SetHeader("k1", "123").
 		BindJSON(&sr)
 	fmt.Printf("err=%v, res=%v\n", err, sr)
 
@@ -45,26 +45,26 @@ func main() {
 
 	err2 := f.Get(context.Background(), "/bar/search").
 		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", "3").
+		Query("cityId", 3).
 		BindJSON(&sr2)
 	fmt.Printf("err2=%v, res2=%v\n", err2, sr2)
 }
 
-func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, error) {
+func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
 	log.Printf("[log] start ...")
-	resp, err := handler(ctx, req)
+	resp, b, err := handler(ctx, req)
 	if err != nil {
 		log.Printf("[log] handler failed. err=%v", err)
-		return resp, err
+		return resp, b, err
 	}
 
 	if resp.StatusCode == http.StatusOK {
 		log.Printf("[log] http.StatusCode = ok")
-		var b []byte
-		b, resp.Body, err = fetch.DrainBody(resp.Body)
+		//var b []byte
+		//b, resp.Body, err = fetch.DrainBody(resp.Body)
 		log.Printf("[log] resp.Body=%s, err=%v", b, err)
 	}
 
 	log.Printf("[log] end ...")
-	return resp, err
+	return resp, b, err
 }

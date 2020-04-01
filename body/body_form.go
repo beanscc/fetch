@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/url"
 	"strings"
+
+	"github.com/beanscc/fetch/util"
 )
 
 // Form 用于构建一个 x-www-form-urlencoded 消息格式的 body 体
@@ -18,27 +20,27 @@ func NewForm(u url.Values) *Form {
 }
 
 // NewFormFromMap return new Form from map
-func NewFormFromMap(m map[string]string) *Form {
+func NewFormFromMap(m map[string]interface{}) *Form {
 	uv := getValues(m)
 	return NewForm(uv)
 }
 
-func getValues(m map[string]string) url.Values {
+func getValues(m map[string]interface{}) url.Values {
 	uv := url.Values{}
 	for k, v := range m {
-		uv.Set(k, v)
+		uv.Set(k, util.ToString(v))
 	}
 
 	return uv
 }
 
-func (f *Form) Add(key, value string) *Form {
-	f.param.Add(key, value)
+func (f *Form) Add(key string, value interface{}) *Form {
+	f.param.Add(key, util.ToString(value))
 	return f
 }
 
-func (f *Form) Set(key, value string) *Form {
-	f.param.Set(key, value)
+func (f *Form) Set(key string, value interface{}) *Form {
+	f.param.Set(key, util.ToString(value))
 	return f
 }
 

@@ -12,6 +12,20 @@ todo
 - 完善 文档
 
 
+## Installation
+
+- install
+
+```
+go get -u github.com/beanscc/fetch
+```
+
+- import
+
+```
+import "github.com/beanscc/fetch"
+```
+
 ## Quick Start
 
 ```go
@@ -28,13 +42,6 @@ import (
 )
 
 func main() {
-	f := fetch.New("http://www.dianping.com")
-	f.SetInterceptors(
-		fetch.Interceptor{Name: "log", Handler: interceptorLog},
-	)
-	f.Debug(true).
-		Timeout(3 * time.Second)
-
 	type searchResp struct {
 		List []struct {
 			Value struct {
@@ -49,75 +56,121 @@ func main() {
 		Code int `json:"code"`
 	}
 
-	var sr searchResp
+	var sr, sr2 searchResp
 
+	f := fetch.New("http://www.dianping.com", fetch.Interceptors(interceptorLog), fetch.Timeout(3*time.Second))
 	err := f.Get(context.Background(), "/bar/search").
 		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", "2").
+		Query("cityId", 2).
 		BindJSON(&sr)
-	fmt.Printf("err=%v, res=%v", err, sr)
+	fmt.Printf("err=%v, res=%v\n", err, sr)
+
+	// 请求方法内部会 clone 一个新的 Fetch 对象
+	fmt.Println("\n==============================================")
+
+	err2 := f.Get(context.Background(), "/bar/search").
+		// Timeout(100*time.Millisecond).  // 超时
+		Query("cityId", 3).
+		BindJSON(&sr2)
+	fmt.Printf("err2=%v, res2=%v\n", err2, sr2)
 }
 
-func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, error) {
+func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
 	log.Printf("[log] start ...")
-	resp, err := handler(ctx, req)
+	resp, b, err := handler(ctx, req)
 	if err != nil {
 		log.Printf("[log] handler failed. err=%v", err)
-		return resp, err
+		return resp, b, err
 	}
 
 	if resp.StatusCode == http.StatusOK {
 		log.Printf("[log] http.StatusCode = ok")
-		var b []byte
-		b, resp.Body, err = fetch.DrainBody(resp.Body)
+		//var b []byte
+		//b, resp.Body, err = fetch.DrainBody(resp.Body)
 		log.Printf("[log] resp.Body=%s, err=%v", b, err)
 	}
 
 	log.Printf("[log] end ...")
-	return resp, err
+	return resp, b, err
+}
+
+```
+
+## API Examples
+
+### 设置服务基础域名地址
+
+```go
+f := fetch.New("") // 不指定基础域名
+
+f := fetch.New("http://www.baidu.com") // 给定基础域名
+
+f := fetch.New("http://www.dianping.com", Debug(true)) // 给定基础域名，同时设置一些选项
+```
+
+### 设置请求方法和接口路径
+
+```go
+// Get get 请求
+func (f *Fetch) Get(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodGet, refPath)
+}
+
+// Post post 请求
+func (f *Fetch) Post(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodPost, refPath)
+}
+
+// Put put 请求
+func (f *Fetch) Put(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodPut, refPath)
+}
+
+// Delete del 请求
+func (f *Fetch) Delete(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodDelete, refPath)
+}
+
+// Path 请求
+func (f *Fetch) Patch(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodPatch, refPath)
+}
+
+// Options 请求
+func (f *Fetch) Options(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodOptions, refPath)
+}
+
+// Trace 请求
+func (f *Fetch) Trace(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodTrace, refPath)
+}
+
+// Head 请求
+func (f *Fetch) Head(ctx context.Context, refPath string) *Fetch {
+	return f.Method(ctx, http.MethodHead, refPath)
+}
+
+func (f *Fetch) Method(ctx context.Context, method string, refPath string) *Fetch {
+	nf := f.WithContext(ctx)
+	nf.setMethodPath(method, refPath)
+	return nf
 }
 ```
 
-
-## 设置服务基础域名地址
-
-```go
-f := fetch.New("http://www.dianping.com").Debug(true)
-
-res, err := f.Get(context.Background(), "city").Text()
-```
-
-## 设置请求方法和接口路径
+每个 Method() 都将返回一个新的 `*Fetch` 对象，该对象包含原 `*Fetch` 对象属性基础选项属性（`req` 和 `ctx` 等属于每次请求范围内的参数）；
+所以，若在 Method() 方法后，进行非链式操作，必须使用某个变量接收 Method() 方法或其链式操作后返回的新 `*Fetch` 对象
 
 ```go
-// Get
-func Get(ctx context.Context, path string) *Fetch {}
-
-// Post
-func Post(ctx context.Context, path string) *Fetch {}
-
-// Put
-func Put(ctx context.Context, path string) *Fetch {}
-
-// Delete
-func Delete(ctx context.Context, path string) *Fetch {}
-
-// Head
-func Head(ctx context.Context, path string) *Fetch {}
-
-// Option
-func Option(ctx context.Context, path string) *Fetch {}
-```
-
-每个 method() 都将返回一个新的*Fetch 对象，该对象包含原 *Fetch 对象属性所有属性（除了 req 和 ctx 参数）
-
-所以，若在 method() 方法后，进行非链式操作，必须使用某个变量接收 method() 方法或其链式操作后返回的新 *Fetch 对象
-
-```go
-
-f.Get(ctx, "city")  // 需要接收 Get() 返回的新 *Fetch 对象，下面的操作才不会出错， But 将下面的操作合并过来组成一个链式操作，则不会出错, 如： b, err := f.Get(ctx, "city").Query("id", "1").Text() // ok
-
+// 错误使用方式
+f.Get(ctx, "city")  // 需要接收 Get() 返回的新 *Fetch 对象，下面的操作才不会出错
 b, err := f.Query("id", "1").Text() // err != nil, err="fetch: empty method"
+
+// 正确的方式：将下面的操作合并过来组成一个链式操作 
+b, err := f.Get(ctx, "city").Query("id", "1").Text()
+// 或
+f = f.Get(ctx, "city")
+b, err := f.Query("id", 1).Text()
 ```
 
 ## 请求 Query 参数设置
@@ -126,17 +179,19 @@ b, err := f.Query("id", "1").Text() // err != nil, err="fetch: empty method"
 f = f.Get(ctx, "city")
 
 // query 参数一个一个设置
-f.Query("id", "1").Query("type", "2")
+f.Query("id", 1).Query("type", 2).Query("name", "test")
 
 // 或通过 map 一次设置
-f.QueryMany(map[string]string{
-    "id":   "1",
-    "type": "2",
+f.QueryMany(map[string]interface{}{
+    "id":   1,
+    "type": 2,
+    "name": "test",
 })
 
 // 也可以组合设置
-f.Query("id", "1").QueryMany(map[string]string{
-    "type": "2",
+f.Query("id", 1).QueryMany(map[string]interface{}{
+    "type": 2,
+    "name": "test",
 })
 ```
 
@@ -157,6 +212,7 @@ f.SetHeader("app-id", "fetch-v-5") // 将覆盖上面 "app-id" 的值为 "fetch-
 
 ```go
 // import "github.com/beanscc/fetch/body"
+
 // Body 构造请求的body
 type Body interface {
 	// Body 构造http请求body
@@ -303,20 +359,25 @@ f.SetBinds(map[string]binding.Binding{
 
 debug 默认是 false 关闭状态，若设置为 true，则为开启状态。
 
-debug 开启状态下，会以 log 形式输出请求和响应的信息
+debug 开启状态下，会以标准包 `log` 形式输出请求和响应的信息
 
 ```go
-f := fetch.New("http://www.dianping.com").Debug(true)
+f := fetch.New("http://www.dianping.com", Debug(true))
 ```
 
 ## 超时控制
 
 ```go
-// 方式1. 通过 ctx
-func WithContext(ctx context.Context) *Fetch {}
+// 方式1. 通过 ctx 单次请求超时设置
+ctx, cancel := context.WithTimeout(context.Background, 10 * time.Second)
+defer cancel()
+f = f.Get(ctx, "/api/user")
 
-// 方式2. 通过 timeout
-func Timeout(t time.Duration) *Fetch {}
+
+// 方式2. 通过 Timeout 全局超时
+f := fetch.New("", Timeout(10 * time.Second))
+// 或
+f = f.WithOptions(Timeout(10 * time.Second))
 ```
 
 ## Auth 认证
@@ -416,8 +477,6 @@ b, resp.Body, err = fetch.DrainBody(resp.Body)
 如何注册拦截器？
 
 ```go
-f.SetInterceptors(
-	// Interceptor{Name: "filterOk", Handler: filterOk},
-	fetch.Interceptor{Name: "filter1", Handler: filter1}, 
-)
+// 通过 Interceptors 设置拦截器
+f := New("", Interceptors(filter1))
 ```

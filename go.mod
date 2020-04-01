@@ -1,3 +1,3 @@
 module github.com/beanscc/fetch
 
-go 1.12
+go 1.11

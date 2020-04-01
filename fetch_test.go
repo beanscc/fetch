@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beanscc/fetch/body"
+	"github.com/beanscc/fetch/util"
 )
 
-func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filterOK] start")
 	resp, bb, err := handler(ctx, req)
 	if err != nil {
@@ -26,7 +26,7 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 		log.Printf("[filterOK] ok")
 		// return nil, errors.New("[filterOk] filtered")
 		var b []byte
-		b, resp.Body, err = DrainBody(resp.Body)
+		b, resp.Body, err = util.DrainBody(resp.Body)
 		log.Printf("[filterOk] resp.Body=%s..., err=%v", b, err)
 	}
 
@@ -34,7 +34,7 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 	return resp, bb, err
 }
 
-func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filter-1] start")
 	req.Header.Add("x-request-id", "xxxxx")
 	var b []byte
@@ -86,13 +86,11 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 
 // go test -v -run Test_Fetch_Get
 func Test_Fetch_Get(t *testing.T) {
-	f := New("http://www.dianping.com/")
-	// f.UseInterceptor(filterOk, filter1)
-	f.SetInterceptors(
-		Interceptor{Name: "filterOk", Handler: filterOk},
-		Interceptor{Name: "filter1", Handler: filter1},
-		// InterceptorHandler{Name: "filter1", Interceptor: retry_1},
-	)
+	f := New("http://www.dianping.com/", Interceptors(
+		testFilterOk,
+		testFilter1,
+		// retry_1,
+	))
 
 	type searchResp struct {
 		List []struct {
@@ -113,20 +111,28 @@ func Test_Fetch_Get(t *testing.T) {
 	ctx := context.Background()
 
 	err := f.Get(ctx, "/bar/search").
-		Debug(true).
+		//Debug(true).
 		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", "2").
+		Query("cityId", 2).
 		Bind("json", &sr)
 	t.Logf("err=%v, resp=%#v", err, sr)
 }
 
-type baseResp struct {
-	Data interface{} `json:"data"`
+type testBaseResp struct {
+	Data interface{} `json:"data,empty"`
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
 }
 
-func (r baseResp) String() string {
+func newTestBaseResp(data interface{}) *testBaseResp {
+	return &testBaseResp{
+		Data: data,
+		Code: 0,
+		Msg:  "ok",
+	}
+}
+
+func (r testBaseResp) String() string {
 	s, err := json.Marshal(r)
 	if err != nil {
 		panic(err)
@@ -141,52 +147,59 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 			panic(fmt.Sprintf("ioutil.ReadAll err. err=%v", err))
 		}
 
-		out := baseResp{
-			Code: 0,
-			Msg:  "",
-			Data: string(bb),
+		fmt.Printf("bb=%s\n", bb)
+
+		out := testBaseResp{
+			Data: map[string]interface{}{
+				"name": "test-post-json",
+			},
 		}
 
 		w.Header().Add("X-Request-Id", r.Header.Get("X-Request-Id"))
 		fmt.Fprintln(w, out.String())
+
+		// time.Sleep(2 * time.Second)
 	}))
 
-	// f := New("")
-	// f.SetInterceptors(
-	// 	// Interceptor{Name: "filterOk", Handler: filterOk},
-	// 	Interceptor{Name: "filter1", Handler: filter1},
-	// )
+	cUser := map[string]interface{}{
+		"name":  "cc",
+		"age":   18,
+		"money": 10.0068,
+	}
 
-	// cUser := map[string]interface{}{
-	// 	"name":  "cc",
-	// 	"age":   18,
-	// 	"money": 10.0068,
+	// cUserMap := map[string]string{
+	// 	"name": "cc",
+	// 	"age":  "18",
 	// }
-
-	cUserMap := map[string]string{
-		"name": "cc",
-		"age":  "18",
-	}
-
-	fs := []body.File{
-		{
-			Field: "file_1",
-			Path:  "testdata/f1.txt",
-		},
-	}
+	//
+	// fs := []body.File{
+	// 	{
+	// 		Field: "file_1",
+	// 		Path:  "testdata/f1.txt",
+	// 	},
+	// }
 
 	// cUserStr := `{"name": "cc", "age": 18}`
 
 	ctx := context.Background()
-	var sr baseResp
-	err := New(ts.URL+"/api/").Post(ctx, "user").
-		Debug(true).
-		Query("t", time.Now().String()).
-		Query("nonce", "xxxxss--sss---xx").
-		// JSON(cUser).
+	var resData map[string]interface{}
+	res := newTestBaseResp(resData)
+	f := New(ts.URL, Debug(false))
+	f = f.WithOptions(
+		// Debug(true),
+		Timeout(1*time.Second),
+		Interceptors(LogInterceptor(nil)),
+	)
+	err := f.Post(ctx, "/api/user").
+		// Query("t", time.Now()).Query("nonce", "xxxxss--sss---xx").
+		// // 或
+		// Query("t", time.Now(), "nonce", "xxxxss--sss---xx").
+		// 或
+		Query("t", time.Now(), map[string]interface{}{"nonce": "xxxxss--sss---xx"}).
+		JSON(cUser).
 		// Form(cUserMap).
-		MultipartForm(cUserMap, fs...).
+		// MultipartForm(cUserMap, fs...).
 		// Timeout(10 * time.Microsecond).
-		BindJSON(&sr)
-	t.Logf("err=%v, resp=%#v", err, sr)
+		BindJSON(res)
+	t.Logf("err=%v, resp=%#v", err, res)
 }
