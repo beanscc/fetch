@@ -27,10 +27,16 @@ func main() {
 
 	var sr, sr2 searchResp
 
-	f := fetch.New("http://www.dianping.com", fetch.Interceptors(interceptorLog), fetch.Timeout(3*time.Second))
+	f := fetch.New("https://www.dianping.com",
+		fetch.Debug(false),
+		// fetch.Interceptors(interceptorLog),
+		fetch.Interceptors(fetch.LogInterceptor(nil)),
+		fetch.Timeout(3*time.Second),
+	)
 	err := f.Get(context.Background(), "/bar/search").
 		// Timeout(100*time.Millisecond).  // 超时
 		Query("cityId", 2).
+		SetHeader("k1", "123").
 		BindJSON(&sr)
 	fmt.Printf("err=%v, res=%v\n", err, sr)
 

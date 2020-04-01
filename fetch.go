@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -15,7 +15,6 @@ import (
 
 // Fetch
 type Fetch struct {
-	client *http.Client // client
 	// client 的基础 url, 若 baseURL 带有部分 path (eg: host:port/path/), 请在 path 后跟上 "/"
 	// baseURL 和 URLPath 的相对/绝对关系，请参考url.ResolveReference()
 	//
@@ -31,13 +30,14 @@ type Fetch struct {
 	//		- 若 Get(ctx, "api/user/profile")，则实际请求的是 host/v1/api/user/profile
 	//		- 若 Get(ctx, "../order/detail")，则实际请求的是 host/order/detail
 	baseURL          string
+	client           *http.Client               // client
 	interceptors     []Interceptor              // 拦截器
 	chainInterceptor Interceptor                // 链式拦截器，由注册的拦截器合并而来
-	onceReq          *request                   // once req
+	onceReq          *http.Request              // once req
 	debug            bool                       // debug
 	err              error                      // error
 	ctx              context.Context            // ctx
-	timeout          time.Duration              // timeout
+	timeout          time.Duration              // timeout duration
 	bind             map[string]binding.Binding // 设置 bind 的实现对象
 }
 
@@ -59,6 +59,13 @@ func New(baseURL string, options ...Option) *Fetch {
 	}
 
 	return f.WithOptions(options...)
+}
+
+func newRequest() *http.Request {
+	return &http.Request{
+		Header: make(http.Header),
+		Body:   nil,
+	}
 }
 
 // clone return a clone Fetch
@@ -149,8 +156,8 @@ func (f *Fetch) Method(ctx context.Context, method string, refPath string) *Fetc
 
 // setPath 设置 refPath
 func (f *Fetch) setMethodPath(method, refPath string) {
-	f.onceReq.method = method
-	f.onceReq.url, f.err = util.ResolveReferenceURL(f.baseURL, refPath)
+	f.onceReq.Method = method
+	f.onceReq.URL, f.err = util.ResolveReferenceURL(f.baseURL, refPath)
 }
 
 // Query 设置查询参数
@@ -161,52 +168,103 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 		return f
 	}
 
-	for i := 0; i < len(args); {
-		if m, ok := args[i].(map[string]interface{}); ok {
-			for k, v := range m {
-				f.onceReq.params[k] = util.ToString(v)
+	if len(args) > 0 {
+		q := f.onceReq.URL.Query()
+		for i := 0; i < len(args); {
+			if m, ok := args[i].(map[string]interface{}); ok {
+				for k, v := range m {
+					q.Add(k, util.ToString(v))
+				}
+				i++
+				continue
 			}
-			i++
-			continue
-		}
 
-		if i == len(args)-1 {
-			f.err = errors.New("fetch: query args must be key-val pair or map[string]interface{}")
-			return f
-		}
+			if i == len(args)-1 {
+				f.err = errors.New("fetch.Query: args must be key-val pair or map[string]interface{}")
+				return f
+			}
 
-		// key-val pair
-		key, val := args[i], args[i+1]
-		if keyStr, ok := key.(string); ok {
-			f.onceReq.params[keyStr] = util.ToString(val)
-		} else {
-			f.err = fmt.Errorf("fetch: query args key-val parir key[%v] must be string type", key)
-			return f
-		}
+			// key-val pair
+			key, val := args[i], args[i+1]
+			if keyStr, ok := key.(string); ok {
+				q.Add(keyStr, util.ToString(val))
+			} else {
+				f.err = fmt.Errorf("fetch.Query: args key-val parir key[%v] must be string type", key)
+				return f
+			}
 
-		i += 2
+			i += 2
+		}
+		f.onceReq.URL.RawQuery = q.Encode()
 	}
-
 	return f
 }
 
 // AddHeader 添加 http header
 func (f *Fetch) AddHeader(key, value string) *Fetch {
-	f.onceReq.header.Add(key, value)
+	f.onceReq.Header.Add(key, value)
 	return f
 }
 
 // SetHeader 设置 http header
 func (f *Fetch) SetHeader(key, value string) *Fetch {
-	f.onceReq.header.Set(key, value)
+	f.onceReq.Header.Set(key, value)
 	return f
 }
 
-// Send 设置请求的 body 消息体
-func (f *Fetch) Body(body body.Body) *Fetch {
-	if body != nil {
-		f.onceReq.body = body
+func (f *Fetch) AddCookie(cs ...*http.Cookie) *Fetch {
+	for _, c := range cs {
+		f.onceReq.AddCookie(c)
 	}
+	return f
+}
+
+func (f *Fetch) SetBasicAuth(username, password string) *Fetch {
+	f.onceReq.SetBasicAuth(username, password)
+	return f
+}
+
+func (f *Fetch) buildRequest() (*http.Request, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	if f.onceReq.Method == "" {
+		f.err = errors.New("fetch: empty method")
+		return nil, f.err
+	}
+
+	if f.onceReq.URL.String() == "" {
+		f.err = errors.New("fetch: empty url")
+		return nil, f.err
+	}
+
+	// build req
+	req, err := http.NewRequestWithContext(f.Context(), f.onceReq.Method, f.onceReq.URL.String(), f.onceReq.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// clone header
+	req.Header = f.onceReq.Header.Clone()
+	return req, err
+}
+
+// ================== set body ==================
+
+// Send 设置请求的 body 消息体
+func (f *Fetch) Body(b body.Body) *Fetch {
+	if b != nil {
+		bb, err := b.Body()
+		if err != nil {
+			f.err = err
+			return f
+		}
+
+		f.onceReq.Body = ioutil.NopCloser(bb)
+		f.onceReq.Header.Set(body.HeaderContentType, b.ContentType())
+	}
+
 	return f
 }
 
@@ -232,86 +290,24 @@ func (f *Fetch) MultipartForm(p map[string]interface{}, fs ...body.File) *Fetch 
 	return f.Body(body.NewMultipartFormFromMap(p, fs...))
 }
 
-// 处理 query 参数
-func (f *Fetch) handleParams() {
-	if len(f.onceReq.params) > 0 {
-		q := f.onceReq.url.Query()
-		for key, value := range f.onceReq.params {
-			q.Add(key, value)
-		}
+// ================== set body end ==================
 
-		f.onceReq.url.RawQuery = q.Encode()
-	}
-}
-
-func (f *Fetch) handleBody() (io.Reader, error) {
-	if f.onceReq.body != nil {
-		b, err := f.onceReq.body.Body()
-		if err != nil {
-			return nil, err
-		}
-
-		// 设置 content-type
-		f.SetHeader(body.HeaderContentType, f.onceReq.body.ContentType())
-		return b, nil
-	}
-
-	return nil, nil
-}
-
-func (f *Fetch) validateDo() error {
-	if f.onceReq.method == "" {
-		return errors.New("fetch: empty method")
-	}
-
-	if f.onceReq.url.String() == "" {
-		return errors.New("fetch: empty url")
-	}
-
-	return nil
-}
-
-// do 执行 http 请求
+// do 构造并执行 http 请求
 func (f *Fetch) do() *response {
 	if f.err != nil {
 		return newErrResp(f.err)
 	}
 
-	err := f.validateDo()
-	if err != nil {
-		return newErrResp(err)
-	}
-
-	// 处理 query 参数
-	f.handleParams()
-
-	// 处理 body
-	var bb io.Reader
-	if isAllowedBody(f.onceReq.method) {
-		bb, err = f.handleBody()
-		if err != nil {
-			return newErrResp(err)
-		}
-	}
-
-	// new req
-	req, err := http.NewRequestWithContext(f.Context(), f.onceReq.method, f.onceReq.url.String(), bb)
-	if err != nil {
-		return newErrResp(err)
-	}
-
-	// handle header
-	for k, v := range f.onceReq.header {
-		for _, vv := range v {
-			req.Header.Set(k, vv)
-		}
-	}
-
-	// timeout
+	// timeout must before buildRequest
 	if f.timeout > 0 {
 		var cancel context.CancelFunc
 		f.ctx, cancel = context.WithTimeout(f.Context(), f.timeout)
 		defer cancel()
+	}
+
+	req, err := f.buildRequest()
+	if err != nil {
+		return newErrResp(err)
 	}
 
 	// 定义 handle
@@ -342,6 +338,8 @@ func (f *Fetch) do() *response {
 		err:  err,
 	}
 }
+
+// ================== bind body ==================
 
 // Bind 按已注册 bind 类型，解析 http 响应
 func (f *Fetch) Bind(bindType string, v interface{}) error {
@@ -385,3 +383,5 @@ func (f *Fetch) Bytes() ([]byte, error) {
 func (f *Fetch) Text() (string, error) {
 	return f.do().Text()
 }
+
+// ================== bind body end==================

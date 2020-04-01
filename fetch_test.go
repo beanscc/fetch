@@ -14,7 +14,7 @@ import (
 	"github.com/beanscc/fetch/util"
 )
 
-func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filterOK] start")
 	resp, bb, err := handler(ctx, req)
 	if err != nil {
@@ -34,7 +34,7 @@ func filterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Re
 	return resp, bb, err
 }
 
-func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
 	log.Printf("[filter-1] start")
 	req.Header.Add("x-request-id", "xxxxx")
 	var b []byte
@@ -87,8 +87,8 @@ func filter1(ctx context.Context, req *http.Request, handler Handler) (*http.Res
 // go test -v -run Test_Fetch_Get
 func Test_Fetch_Get(t *testing.T) {
 	f := New("http://www.dianping.com/", Interceptors(
-		filterOk,
-		filter1,
+		testFilterOk,
+		testFilter1,
 		// retry_1,
 	))
 
@@ -118,13 +118,21 @@ func Test_Fetch_Get(t *testing.T) {
 	t.Logf("err=%v, resp=%#v", err, sr)
 }
 
-type baseResp struct {
-	Data interface{} `json:"data"`
+type testBaseResp struct {
+	Data interface{} `json:"data,empty"`
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
 }
 
-func (r baseResp) String() string {
+func newTestBaseResp(data interface{}) *testBaseResp {
+	return &testBaseResp{
+		Data: data,
+		Code: 0,
+		Msg:  "ok",
+	}
+}
+
+func (r testBaseResp) String() string {
 	s, err := json.Marshal(r)
 	if err != nil {
 		panic(err)
@@ -139,14 +147,18 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 			panic(fmt.Sprintf("ioutil.ReadAll err. err=%v", err))
 		}
 
-		out := baseResp{
-			Code: 0,
-			Msg:  "",
-			Data: string(bb),
+		fmt.Printf("bb=%s\n", bb)
+
+		out := testBaseResp{
+			Data: map[string]interface{}{
+				"name": "test-post-json",
+			},
 		}
 
 		w.Header().Add("X-Request-Id", r.Header.Get("X-Request-Id"))
 		fmt.Fprintln(w, out.String())
+
+		// time.Sleep(2 * time.Second)
 	}))
 
 	cUser := map[string]interface{}{
@@ -170,22 +182,24 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	// cUserStr := `{"name": "cc", "age": 18}`
 
 	ctx := context.Background()
-	var sr baseResp
+	var resData map[string]interface{}
+	res := newTestBaseResp(resData)
 	f := New(ts.URL, Debug(false))
 	f = f.WithOptions(
-		Debug(true),
-		// Interceptors(LogInterceptor(nil)),
+		// Debug(true),
+		Timeout(1*time.Second),
+		Interceptors(LogInterceptor(nil)),
 	)
 	err := f.Post(ctx, "/api/user").
-		Query("t", time.Now()).Query("nonce", "xxxxss--sss---xx").
-		// 或
-		Query("t", time.Now(), "nonce", "xxxxss--sss---xx").
+		// Query("t", time.Now()).Query("nonce", "xxxxss--sss---xx").
+		// // 或
+		// Query("t", time.Now(), "nonce", "xxxxss--sss---xx").
 		// 或
 		Query("t", time.Now(), map[string]interface{}{"nonce": "xxxxss--sss---xx"}).
 		JSON(cUser).
 		// Form(cUserMap).
 		// MultipartForm(cUserMap, fs...).
 		// Timeout(10 * time.Microsecond).
-		BindJSON(&sr)
-	t.Logf("err=%v, resp=%#v", err, sr)
+		BindJSON(res)
+	t.Logf("err=%v, resp=%#v", err, res)
 }

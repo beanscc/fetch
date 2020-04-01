@@ -50,31 +50,8 @@ func chainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 }
 
-//func XRequestIDFromContext(ctx context.Context, key string) string {
-//	if ctx == nil {
-//		panic("nil ctx")
-//	}
-//
-//	val := ctx.Value(key)
-//	if v, ok := val.(string); ok {
-//		return v
-//	}
-//
-//	return GetUUID()
-//}
-//
-//func XRequestIDInterceptor(name string) Interceptor {
-//	if name == "" {
-//		name = "X-Request-Id"
-//	}
-//	return func(ctx context.Context, req *http.Request, httpHandler Handler) (*http.Response, []byte, error) {
-//		req.Header.Set(name, XRequestIDFromContext(ctx))
-//		return httpHandler(ctx, req)
-//	}
-//}
-
 func LogInterceptor(reqExcludeHeaderDump map[string]bool) Interceptor {
-	//var reqExcludeHeaderDump = map[string]bool{
+	// var reqExcludeHeaderDump = map[string]bool{
 	//	"Host":              true,
 	//	"Transfer-Encoding": true,
 	//	"Trailer":           true,
@@ -85,7 +62,7 @@ func LogInterceptor(reqExcludeHeaderDump map[string]bool) Interceptor {
 	//	"Accept-Language":   true,
 	//	"Origin":            true,
 	//	"Sec-Fetch-Site":    true,
-	//}
+	// }
 
 	return func(ctx context.Context, req *http.Request, httpHandler Handler) (response *http.Response, body []byte, err error) {
 		var reqBody []byte
