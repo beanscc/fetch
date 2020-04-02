@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beanscc/fetch/body"
 	"github.com/beanscc/fetch/util"
 )
 
@@ -167,20 +168,6 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		"money": 10.0068,
 	}
 
-	// cUserMap := map[string]string{
-	// 	"name": "cc",
-	// 	"age":  "18",
-	// }
-	//
-	// fs := []body.File{
-	// 	{
-	// 		Field: "file_1",
-	// 		Path:  "testdata/f1.txt",
-	// 	},
-	// }
-
-	// cUserStr := `{"name": "cc", "age": 18}`
-
 	ctx := context.Background()
 	var resData map[string]interface{}
 	res := newTestBaseResp(resData)
@@ -202,4 +189,34 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		// Timeout(10 * time.Microsecond).
 		BindJSON(res)
 	t.Logf("err=%v, resp=%#v", err, res)
+
+	cUserMap := map[string]interface{}{
+		"name": "cc",
+		"age":  18,
+	}
+
+	filePath := "testdata/f1.txt"
+	fileContent, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("readFile failed. err=%v", err)
+	}
+	fs := []body.File{
+		{
+			Field:   "file_1",
+			Path:    filePath,
+			Content: fileContent,
+		},
+		{
+			Field:   "file_2",
+			Path:    filePath,
+			Content: fileContent,
+		},
+	}
+
+	rb, err := f.Post(ctx, "/api/user").
+		MultipartForm(cUserMap, fs...).
+		Bytes()
+	t.Logf("form-data upload file. resp=%s, err=%v", rb, err)
+
+	// cUserStr := `{"name": "cc", "age": 18}`
 }
