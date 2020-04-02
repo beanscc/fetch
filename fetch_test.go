@@ -207,9 +207,10 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 			Content: fileContent,
 		},
 		{
-			Field:   "file_2",
-			Path:    filePath,
-			Content: fileContent,
+			Field:       "file_2",
+			Path:        filePath,
+			ContentType: "application/octet-stream",
+			Content:     fileContent,
 		},
 	}
 
