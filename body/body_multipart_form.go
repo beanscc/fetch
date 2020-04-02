@@ -3,7 +3,6 @@ package body
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/url"
 )
@@ -17,8 +16,9 @@ type MultipartForm struct {
 
 // File 文件
 type File struct {
-	Field string // 表单字段
-	Path  string // 文件路径名称
+	Field   string // 表单字段
+	Path    string // 文件路径名称
+	Content []byte // 文件内容
 }
 
 // NewFormDataBody return new MultipartForm
@@ -62,12 +62,7 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 				return nil, err
 			}
 
-			fv, err := ioutil.ReadFile(f.Path)
-			if err != nil {
-				return nil, err
-			}
-
-			if _, err := fh.Write(fv); err != nil {
+			if _, err := fh.Write(f.Content); err != nil {
 				return nil, err
 			}
 		}
