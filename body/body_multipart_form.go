@@ -2,9 +2,13 @@ package body
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
+	"net/textproto"
 	"net/url"
+	"strings"
 )
 
 // MultipartForm multipart/form-data
@@ -16,9 +20,10 @@ type MultipartForm struct {
 
 // File 文件
 type File struct {
-	Field   string // 表单字段
-	Path    string // 文件路径名称
-	Content []byte // 文件内容
+	Field       string // 表单字段
+	Path        string // 文件路径名称
+	ContentType string // 文件 content-type；若不指定，则根据 Content 判断
+	Content     []byte // 文件内容
 }
 
 // NewFormDataBody return new MultipartForm
@@ -35,18 +40,44 @@ func NewMultipartFormFromMap(m map[string]interface{}, fs ...File) *MultipartFor
 	return NewMultipartForm(uv, fs...)
 }
 
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+// CreateFormFile Create form file
+func (mf *MultipartForm) CreateFormFile(w *multipart.Writer, fieldName, filename string, fileContentType string, fileContent []byte) (int, error) {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			escapeQuotes(fieldName), escapeQuotes(filename)))
+
+	if fileContentType == "" {
+		fileContentType = http.DetectContentType(fileContent)
+	}
+
+	h.Set("Content-Type", fileContentType)
+	part, err := w.CreatePart(h)
+	if err != nil {
+		return 0, err
+	}
+
+	return part.Write(fileContent)
+}
+
 // Body 构建 multipart/form-data 格式的消息体
-func (fd *MultipartForm) Body() (io.Reader, error) {
+func (mf *MultipartForm) Body() (io.Reader, error) {
 	// 构造 form-data
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	defer w.Close()
 
 	// content-type
-	fd.contentType = w.FormDataContentType()
+	mf.contentType = w.FormDataContentType()
 
 	// 表单参数
-	for k, v := range fd.param {
+	for k, v := range mf.param {
 		for _, vv := range v {
 			if err := w.WriteField(k, vv); err != nil {
 				return nil, err
@@ -55,14 +86,10 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 	}
 
 	// 表单文件
-	if len(fd.files) > 0 {
-		for _, f := range fd.files {
-			fh, err := w.CreateFormFile(f.Field, f.Path)
+	if len(mf.files) > 0 {
+		for _, f := range mf.files {
+			_, err := mf.CreateFormFile(w, f.Field, f.Path, f.ContentType, f.Content)
 			if err != nil {
-				return nil, err
-			}
-
-			if _, err := fh.Write(f.Content); err != nil {
 				return nil, err
 			}
 		}
@@ -72,6 +99,6 @@ func (fd *MultipartForm) Body() (io.Reader, error) {
 }
 
 // ContentType 构建 multipart/form-data 格式的 header 头
-func (fd *MultipartForm) ContentType() string {
-	return fd.contentType
+func (mf *MultipartForm) ContentType() string {
+	return mf.contentType
 }
