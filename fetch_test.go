@@ -216,6 +216,8 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 
 	rb, err := f.Post(ctx, "/api/user").
 		MultipartForm(cUserMap, fs...).
+		AddHeader("token", "xxx-xxxx").
+		AddHeader("x-request-id", "wwww-wwww").
 		Bytes()
 	t.Logf("form-data upload file. resp=%s, err=%v", rb, err)
 
