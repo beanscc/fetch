@@ -240,13 +240,18 @@ func (f *Fetch) buildRequest() (*http.Request, error) {
 	}
 
 	// build req
-	req, err := http.NewRequestWithContext(f.Context(), f.onceReq.Method, f.onceReq.URL.String(), f.onceReq.Body)
+	req, err := http.NewRequest(f.onceReq.Method, f.onceReq.URL.String(), f.onceReq.Body)
 	if err != nil {
 		return nil, err
 	}
+	req = req.WithContext(f.Context())
 
 	// clone header
-	req.Header = f.onceReq.Header.Clone()
+	for k, v := range f.onceReq.Header {
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
+	}
 	return req, err
 }
 
