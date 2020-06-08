@@ -173,9 +173,10 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	res := newTestBaseResp(resData)
 	f := New(ts.URL, Debug(false))
 	f = f.WithOptions(
-		// Debug(true),
+		Debug(true),
 		Timeout(1*time.Second),
-		Interceptors(LogInterceptor(nil)),
+		// Interceptors(LogInterceptor(nil),
+		// ),
 	)
 	err := f.Post(ctx, "/api/user").
 		// Query("t", time.Now()).Query("nonce", "xxxxss--sss---xx").
@@ -212,6 +213,12 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 			ContentType: "application/octet-stream",
 			Content:     fileContent,
 		},
+		{
+			Field:       "file_2",
+			Path:        filePath,
+			ContentType: "application/octet-stream",
+			Content:     fileContent,
+		},
 	}
 
 	rb, err := f.Post(ctx, "/api/user").
@@ -221,5 +228,12 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 		Bytes()
 	t.Logf("form-data upload file. resp=%s, err=%v", rb, err)
 
-	// cUserStr := `{"name": "cc", "age": 18}`
+	resDo := f.Post(ctx, "/api/user").
+		MultipartForm(cUserMap, fs...).
+		AddHeader("token", "2222xxx-xxxx").
+		AddHeader("x-request-id", "22222wwww-wwww").
+		Do()
+
+	rb2, err2 := resDo.Bytes()
+	t.Logf("form-data2 upload file. resp=%s, err=%v", rb2, err2)
 }
