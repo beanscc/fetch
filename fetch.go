@@ -374,6 +374,11 @@ func (f *Fetch) BindXML(v interface{}) error {
 	return f.Bind(binding.XML{}.Name(), v)
 }
 
+// Do return fetch result
+func (f *Fetch) Do() *response {
+	return f.do()
+}
+
 // Resp return http.Response
 func (f *Fetch) Resp() (*http.Response, error) {
 	return f.do().Resp()
