@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -50,51 +51,67 @@ func chainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 }
 
-func LogInterceptor(reqExcludeHeaderDump map[string]bool) Interceptor {
-	// var reqExcludeHeaderDump = map[string]bool{
-	//	"Host":              true,
-	//	"Transfer-Encoding": true,
-	//	"Trailer":           true,
-	//	"Accept":            true,
-	//	"Accept-Encoding":   true,
-	//	"Connection":        true,
-	//	"Cache-Control":     true,
-	//	"Accept-Language":   true,
-	//	"Origin":            true,
-	//	"Sec-Fetch-Site":    true,
-	// }
+var defaultLogLogger = func(ctx context.Context, format string, args ...interface{}) {
+	log.Printf(format, args...)
+}
 
-	return func(ctx context.Context, req *http.Request, httpHandler Handler) (response *http.Response, body []byte, err error) {
+type LogInterceptorRequest struct {
+	ExcludeReqHeader map[string]bool                                               // 日志不记录的请求头
+	MaxReqBody       int                                                           // 日志记录请求消息体的最大字节数
+	MaxRespBody      int                                                           // 日志记录响应消息体的最大字节数
+	Logger           func(ctx context.Context, format string, args ...interface{}) // 日志记录的方法
+}
+
+func LogInterceptor(param *LogInterceptorRequest) Interceptor {
+	return func(ctx context.Context, req *http.Request, httpHandler Handler) (resp *http.Response, respBody []byte, err error) {
 		var reqBody []byte
 		if req.Body != nil { // has body
-			rb, ob, err := util.DrainBody(req.Body)
-			req.Body = ob
+			reqBody, req.Body, err = util.DrainBody(req.Body)
 			if err != nil {
-				return nil, rb, err
+				return nil, nil, err
 			}
 
-			reqBody = rb
-		}
-
-		h := make(http.Header, 0)
-		for k, v := range req.Header {
-			if ok := reqExcludeHeaderDump[k]; !ok {
-				for _, vv := range v {
-					h.Set(k, vv)
-				}
+			if param.MaxReqBody > 0 && len(reqBody) > param.MaxReqBody { // 截取 req body
+				reqBody = reqBody[:param.MaxReqBody]
+				reqBody = append(reqBody, "..."...)
 			}
 		}
+
+		// copy header
+		h := make(http.Header, len(req.Header)-len(param.ExcludeReqHeader))
+		for k, vv := range req.Header {
+			if ok := param.ExcludeReqHeader[k]; !ok {
+				vv2 := make([]string, len(vv))
+				copy(vv2, vv)
+				h[k] = vv2
+			}
+		}
+
 		start := time.Now()
-		resp, respBody, err := httpHandler(ctx, req)
+		resp, respBody, err = httpHandler(ctx, req)
+		var statusCode int
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
 		end := time.Now()
-		logger.WithContext(ctx).Infof("[Fetch-Req-Log] method: %s, url: %s, body: %s, header: %s, resp: %s, latency: %s, err: %v",
-			req.Method,
-			req.URL.String(),
-			reqBody,
-			h,
-			respBody,
-			end.Sub(start),
-			err)
+
+		logger := param.Logger
+		if logger == nil {
+			logger = defaultLogLogger
+		}
+
+		var logRespBody []byte
+		if param.MaxRespBody > 0 && len(respBody) > param.MaxRespBody { // 截取 resp body
+			logRespBody = respBody[:param.MaxRespBody]
+			logRespBody = append(logRespBody, "...."...)
+		} else {
+			logRespBody = respBody
+		}
+
+		logger(ctx, "[Fetch] method: %s, url: %s, header: %s, body: %s, latency: %s, status: %d, resp: %s, err: %v",
+			req.Method, req.URL.String(), h, reqBody, end.Sub(start),
+			statusCode, logRespBody, err)
+
 		return resp, respBody, err
 	}
 }

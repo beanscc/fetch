@@ -2,7 +2,7 @@ package fetch
 
 import "context"
 
-var defaultFetch = New("", Debug(true))
+var defaultFetch = New("")
 
 func Get(ctx context.Context, refPath string) *Fetch {
 	return defaultFetch.Get(ctx, refPath)

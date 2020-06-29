@@ -1,4 +1,4 @@
-package fetch
+package fetch_test
 
 import (
 	"context"
@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beanscc/fetch"
 	"github.com/beanscc/fetch/body"
 	"github.com/beanscc/fetch/util"
 )
 
-func testFilterOk(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilterOk(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
 	log.Printf("[filterOK] start")
 	resp, bb, err := handler(ctx, req)
 	if err != nil {
@@ -35,7 +36,7 @@ func testFilterOk(ctx context.Context, req *http.Request, handler Handler) (*htt
 	return resp, bb, err
 }
 
-func testFilter1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error) {
+func testFilter1(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
 	log.Printf("[filter-1] start")
 	req.Header.Add("x-request-id", "xxxxx")
 	var b []byte
@@ -52,71 +53,84 @@ func testFilter1(ctx context.Context, req *http.Request, handler Handler) (*http
 	return resp, b, err
 }
 
-// func retry_1(ctx context.Context, req *http.Request, handler Handler) (*http.Response, error) {
-// 	log.Printf("[retry_1] start")
-//
-// 	var (
-// 		resp *http.Response
-// 		err  error
-// 	)
-//
-// 	err = Retry(3*time.Second, 3, func(n int) error {
-// 		log.Printf("[retry_1] n=%v", n)
-// 		resp, err = handler(ctx, req)
-// 		if err != nil || resp == nil || resp.StatusCode != 500 {
-// 			if n == 2 { // 模拟第二次重试时，达到预期
-// 				return nil
-// 			}
-// 			return errors.New("[retry_1] has err. want retry")
-// 		}
-//
-// 		return nil
-// 	})
-//
-// 	if err != nil {
-// 		log.Printf("[retry_1] retry failed. err=%v", err)
-// 		return resp, err
-// 	}
-// 	var b []byte
-// 	b, resp.Body, err = DrainBody(resp.Body)
-// 	log.Printf("[retry_1] resp.Body=%s..., err=%v", b[:100], err)
-// 	log.Printf("[retry_1] end")
-//
-// 	return resp, err
-// }
-
-// go test -v -run Test_Fetch_Get
-func Test_Fetch_Get(t *testing.T) {
-	f := New("http://www.dianping.com/", Interceptors(
-		testFilterOk,
-		testFilter1,
-		// retry_1,
-	))
-
-	type searchResp struct {
-		List []struct {
-			Value struct {
-				SubTag          string `json:"subtag" xml:"subtag"`
-				Location        string `json:"location"`
-				MainCategoryIDS string `json:"maincategoryids"`
-				DataType        string `json:"datatype"`
-				ID              int    `json:"id_,string"`
-				KeyWord         string `json:"suggestKeyWord"`
-			} `json:"valueMap"`
-		} `json:"recordList"`
-		Code int `json:"code"`
+// go test -v -run TestFetchGet
+func TestFetchGet(t *testing.T) {
+	type Resp struct {
+		Name   string `json:"name"`
+		Age    uint8  `json:"age"`
+		Addr   string `json:"address"`
+		Mobile string `json:"mobile"`
 	}
 
-	var sr searchResp
-	// err = resp.BindJSON(&sr)
-	ctx := context.Background()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		out := testBaseResp{
+			Code: 0,
+			Msg:  "ok",
+			Data: &Resp{
+				Name:   "ming.liu",
+				Age:    20,
+				Addr:   "beijing wangfujing street",
+				Mobile: "+86-13800000000",
+			},
+		}
 
-	err := f.Get(ctx, "/bar/search").
-		//Debug(true).
-		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", 2).
-		Bind("json", &sr)
-	t.Logf("err=%v, resp=%#v", err, sr)
+		res, _ := json.Marshal(out)
+		w.Header().Set("content-type", body.MIMEJSON)
+		w.WriteHeader(http.StatusOK)
+		w.Write(res)
+	}))
+
+	f := fetch.New(ts.URL,
+		fetch.Debug(true),
+		fetch.Interceptors(
+			// fetch.LogInterceptor 会输出以下日志内容
+			/*
+				2020/06/29 23:53:26 [Fetch] method: GET, url: http://127.0.0.1:65170/api/user?id=10&name=liu, header: map[X-Request-Id:[xxxx-xxxx-xxxx]], body: , latency: 1.128272ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>, extra k1:v1
+			*/
+			fetch.LogInterceptor(&fetch.LogInterceptorRequest{
+				ExcludeReqHeader: nil,
+				MaxReqBody:       0,
+				MaxRespBody:      0,
+				Logger: func(ctx context.Context, format string, args ...interface{}) {
+					v1, _ := ctx.Value("k1").(string)
+					log.Printf(format+", extra k1:%v", append(args, v1)...)
+				},
+			}),
+		))
+
+	var data Resp
+	tRes := newTestBaseResp(&data)
+	ctx := context.WithValue(context.Background(), "k1", "v1")
+	err := f.
+		Get(ctx, "/api/user").
+		Query("id", 10, map[string]interface{}{"name": "liu"}).
+		AddHeader("x-request-id", "xxxx-xxxx-xxxx").
+		// Bind("json", &tRes)
+		// 或
+		BindJSON(&tRes)
+	if err != nil {
+		t.Errorf("Test_Fetch_Get failed. err:%v", err)
+		return
+	}
+	t.Logf("resp.data=%#v", data)
+
+	// output:
+	/*
+			2020/06/29 23:48:01 [Fetch-Debug] GET /api/user?id=10&name=liu HTTP/1.1
+			Host: 127.0.0.1:65110
+			User-Agent: Go-http-client/1.1
+			X-Request-Id: xxxx-xxxx-xxxx
+			Accept-Encoding: gzip
+
+			2020/06/29 23:48:01 [Fetch-Debug] HTTP/1.1 200 OK
+			Content-Length: 122
+			Content-Type: application/json
+			Date: Mon, 29 Jun 2020 15:48:01 GMT
+
+			{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}
+
+		fetch_test.go:102: resp.data=fetch_test.Resp{Name:"ming.liu", Age:0x14, Addr:"beijing wangfujing street", Mobile:"+86-13800000000"}
+	*/
 }
 
 type testBaseResp struct {
@@ -171,19 +185,18 @@ func Test_Fetch_POST_JSON(t *testing.T) {
 	ctx := context.Background()
 	var resData map[string]interface{}
 	res := newTestBaseResp(resData)
-	f := New(ts.URL, Debug(false))
+	f := fetch.New(ts.URL)
 	f = f.WithOptions(
-		Debug(true),
-		Timeout(1*time.Second),
-		// Interceptors(LogInterceptor(nil),
-		// ),
+		fetch.Debug(true),
+		fetch.Timeout(1*time.Second),
+		fetch.Interceptors(fetch.LogInterceptor(nil)),
 	)
 	err := f.Post(ctx, "/api/user").
 		// Query("t", time.Now()).Query("nonce", "xxxxss--sss---xx").
 		// // 或
 		// Query("t", time.Now(), "nonce", "xxxxss--sss---xx").
 		// 或
-		Query("t", time.Now(), map[string]interface{}{"nonce": "xxxxss--sss---xx"}).
+		Query("t", time.Now().Unix(), map[string]interface{}{"nonce": "xxxxss--sss---xx"}).
 		JSON(cUser).
 		// Form(cUserMap).
 		// MultipartForm(cUserMap, fs...).

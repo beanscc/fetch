@@ -100,12 +100,11 @@ func (f *Fetch) Context() context.Context {
 
 // WithOptions 返回一个设置了新 option 的 *Fetch 对象
 func (f *Fetch) WithOptions(options ...Option) *Fetch {
-	nf := f.clone()
 	for _, option := range options {
-		option.Apply(nf)
+		option.Apply(f)
 	}
 
-	return nf
+	return f
 }
 
 // Get get 请求
@@ -149,6 +148,9 @@ func (f *Fetch) Head(ctx context.Context, refPath string) *Fetch {
 }
 
 func (f *Fetch) Method(ctx context.Context, method string, refPath string) *Fetch {
+	if f.err != nil {
+		return f
+	}
 	nf := f.WithContext(ctx)
 	nf.setMethodPath(method, refPath)
 	return nf
@@ -169,6 +171,10 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 	}
 
 	if len(args) > 0 {
+		if f.onceReq.Method == "" {
+			f.err = errors.New("fetch.Query: must first call Method() such as Get()/Post()... ")
+			return f
+		}
 		q := f.onceReq.URL.Query()
 		for i := 0; i < len(args); {
 			if m, ok := args[i].(map[string]interface{}); ok {
@@ -201,14 +207,14 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 }
 
 // AddHeader 添加 http header
-func (f *Fetch) AddHeader(key, value string) *Fetch {
-	f.onceReq.Header.Add(key, value)
+func (f *Fetch) AddHeader(key string, value interface{}) *Fetch {
+	f.onceReq.Header.Add(key, util.ToString(value))
 	return f
 }
 
 // SetHeader 设置 http header
-func (f *Fetch) SetHeader(key, value string) *Fetch {
-	f.onceReq.Header.Set(key, value)
+func (f *Fetch) SetHeader(key string, value interface{}) *Fetch {
+	f.onceReq.Header.Set(key, util.ToString(value))
 	return f
 }
 
