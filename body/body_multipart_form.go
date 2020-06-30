@@ -21,7 +21,7 @@ type MultipartForm struct {
 // File 文件
 type File struct {
 	Field       string // 表单字段
-	Path        string // 文件路径名称
+	Filename    string // 文件名称
 	ContentType string // 文件 content-type；若不指定，则根据 Content 判断
 	Content     []byte // 文件内容
 }
@@ -88,7 +88,7 @@ func (mf *MultipartForm) Body() (io.Reader, error) {
 	// 表单文件
 	if len(mf.files) > 0 {
 		for _, f := range mf.files {
-			_, err := mf.CreateFormFile(w, f.Field, f.Path, f.ContentType, f.Content)
+			_, err := mf.CreateFormFile(w, f.Field, f.Filename, f.ContentType, f.Content)
 			if err != nil {
 				return nil, err
 			}
