@@ -37,15 +37,21 @@ func main() {
 	}))
 
 	var res Resp
-	// err := fetch.Get(context.Background(), ts.URL).
-	err := fetch.New(ts.URL, fetch.Debug(true)).Get(context.Background(), "api/user").
+	// err := fetch.Get(context.Background(), ts.URL+"/api/user").
+	// 	Query("id", 10).
+	// 	BindJSON(&res)
+
+	// OR
+
+	err := fetch.New(ts.URL, fetch.Debug(true)).
+		Get(context.Background(), "api/user").
 		Query("id", 10).
 		BindJSON(&res)
 	if err != nil {
 		log.Printf("fetch.Get() failed. err:%v", err)
 		return
 	}
-	log.Printf("fetch.Get() got:%+v", res) // output: fetch.Get() got:{Code:0 Msg:ok Data:map[addr:beijing wangfujing street age:20 mobile:+86-13800000000 name:ming.liu]}
+	log.Printf("fetch.Get() got:%+v", res) // output: 2020/06/30 16:16:06 fetch.Get() got:{Code:0 Msg:ok Data:map[addr:beijing wangfujing street age:20 mobile:+86-13800000000 name:ming.liu]}
 }
 
 type baseResp struct {
