@@ -40,8 +40,8 @@ func Interceptors(interceptors ...Interceptor) Option {
 	})
 }
 
-// Binds 设置绑定器
-func Binds(binds map[string]binding.Binding) Option {
+// Bind 设置自定义响应解析器
+func Bind(binds map[string]binding.Binding) Option {
 	return optionFunc(func(f *Fetch) {
 		for k, v := range binds {
 			f.bind[k] = v

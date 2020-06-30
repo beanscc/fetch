@@ -80,8 +80,8 @@ func (f *Fetch) clone() *Fetch {
 	return nf
 }
 
-// WithContext return new Fetch with ctx
-func (f *Fetch) WithContext(ctx context.Context) *Fetch {
+// withContext return new Fetch with ctx
+func (f *Fetch) withContext(ctx context.Context) *Fetch {
 	if ctx == nil {
 		panic("fetch: nil context")
 	}
@@ -104,7 +104,6 @@ func (f *Fetch) WithOptions(options ...Option) *Fetch {
 	for _, option := range options {
 		option.Apply(nf)
 	}
-
 	return nf
 }
 
@@ -149,7 +148,10 @@ func (f *Fetch) Head(ctx context.Context, refPath string) *Fetch {
 }
 
 func (f *Fetch) Method(ctx context.Context, method string, refPath string) *Fetch {
-	nf := f.WithContext(ctx)
+	if f.err != nil {
+		return f
+	}
+	nf := f.withContext(ctx)
 	nf.setMethodPath(method, refPath)
 	return nf
 }
@@ -169,6 +171,10 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 	}
 
 	if len(args) > 0 {
+		if f.onceReq.Method == "" {
+			f.err = errors.New("fetch.Query: must first call Method() such as Get()/Post()... ")
+			return f
+		}
 		q := f.onceReq.URL.Query()
 		for i := 0; i < len(args); {
 			if m, ok := args[i].(map[string]interface{}); ok {
@@ -201,14 +207,14 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 }
 
 // AddHeader 添加 http header
-func (f *Fetch) AddHeader(key, value string) *Fetch {
-	f.onceReq.Header.Add(key, value)
+func (f *Fetch) AddHeader(key string, value interface{}) *Fetch {
+	f.onceReq.Header.Add(key, util.ToString(value))
 	return f
 }
 
 // SetHeader 设置 http header
-func (f *Fetch) SetHeader(key, value string) *Fetch {
-	f.onceReq.Header.Set(key, value)
+func (f *Fetch) SetHeader(key string, value interface{}) *Fetch {
+	f.onceReq.Header.Set(key, util.ToString(value))
 	return f
 }
 
@@ -242,6 +248,7 @@ func (f *Fetch) buildRequest() (*http.Request, error) {
 	// build req
 	req, err := http.NewRequest(f.onceReq.Method, f.onceReq.URL.String(), f.onceReq.Body)
 	if err != nil {
+		f.err = err
 		return nil, err
 	}
 	req = req.WithContext(f.Context())
@@ -252,10 +259,10 @@ func (f *Fetch) buildRequest() (*http.Request, error) {
 			req.Header.Add(k, vv)
 		}
 	}
-	return req, err
+	return req, nil
 }
 
-// ================== set body ==================
+// ================== set request body ==================
 
 // Send 设置请求的 body 消息体
 func (f *Fetch) Body(b body.Body) *Fetch {
@@ -274,13 +281,13 @@ func (f *Fetch) Body(b body.Body) *Fetch {
 }
 
 // JSON 发送 application/json 格式消息
-// p 支持 string/[]byte/struct/map
+// p 支持 string/[]byte/其他类型按 json.Marshal 编码
 func (f *Fetch) JSON(p interface{}) *Fetch {
 	return f.Body(body.NewJSON(p))
 }
 
 // XML 发送 application/xml 格式消息
-// p 支持 string/[]byte/struct/map
+// p 支持 string/[]byte/其他类型按 xml.Marshal 编码
 func (f *Fetch) XML(p interface{}) *Fetch {
 	return f.Body(body.NewXML(p))
 }
@@ -295,7 +302,39 @@ func (f *Fetch) MultipartForm(p map[string]interface{}, fs ...body.File) *Fetch 
 	return f.Body(body.NewMultipartFormFromMap(p, fs...))
 }
 
-// ================== set body end ==================
+// ================== set request body end ==================
+
+// ================== bind body ==================
+
+// Bind 按已注册 bind 类型，解析 http 响应
+func (f *Fetch) Bind(bindType string, v interface{}) error {
+	res := f.Do()
+	if res.err != nil {
+		return res.err
+	}
+
+	if res.resp == nil {
+		return errors.New("fetch: nil http.Response")
+	}
+
+	if b, ok := f.bind[bindType]; ok {
+		return b.Bind(res.resp, res.body, v)
+	}
+
+	return fmt.Errorf("fetch: unknown bind type:%v", bindType)
+}
+
+// BindJSON bind http.Body with json
+func (f *Fetch) BindJSON(v interface{}) error {
+	return f.Bind(binding.JSON{}.Name(), v)
+}
+
+// BindXML bind http.Body with xml
+func (f *Fetch) BindXML(v interface{}) error {
+	return f.Bind(binding.XML{}.Name(), v)
+}
+
+// ================== bind body end ==================
 
 // do 构造并执行 http 请求
 func (f *Fetch) do() *response {
@@ -344,36 +383,6 @@ func (f *Fetch) do() *response {
 	}
 }
 
-// ================== bind body ==================
-
-// Bind 按已注册 bind 类型，解析 http 响应
-func (f *Fetch) Bind(bindType string, v interface{}) error {
-	r := f.do()
-	if r.err != nil {
-		return r.err
-	}
-
-	if r.resp == nil {
-		return errors.New("fetch: nil http.Response")
-	}
-
-	if b, ok := f.bind[bindType]; ok {
-		return b.Bind(r.resp, r.body, v)
-	}
-
-	return fmt.Errorf("fetch: unknown bind type:%v", bindType)
-}
-
-// BindJSON bind http.Body with json
-func (f *Fetch) BindJSON(v interface{}) error {
-	return f.Bind(binding.JSON{}.Name(), v)
-}
-
-// BindXML bind http.Body with xml
-func (f *Fetch) BindXML(v interface{}) error {
-	return f.Bind(binding.XML{}.Name(), v)
-}
-
 // Do return fetch result
 func (f *Fetch) Do() *response {
 	return f.do()
@@ -393,5 +402,3 @@ func (f *Fetch) Bytes() ([]byte, error) {
 func (f *Fetch) Text() (string, error) {
 	return f.do().Text()
 }
-
-// ================== bind body end==================

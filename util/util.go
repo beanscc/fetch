@@ -92,9 +92,9 @@ func ToString(v interface{}) string {
 	case uint64:
 		s = strconv.FormatUint(v.(uint64), 10)
 	case float32:
-		s = strconv.FormatFloat(float64(v.(float32)), 'f', 9, 64)
+		s = strconv.FormatFloat(float64(v.(float32)), 'f', -1, 64)
 	case float64:
-		s = strconv.FormatFloat(v.(float64), 'f', 9, 64)
+		s = strconv.FormatFloat(v.(float64), 'f', -1, 64)
 	case bool:
 		s = strconv.FormatBool(v.(bool))
 	default:

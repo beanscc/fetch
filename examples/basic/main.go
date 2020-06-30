@@ -2,69 +2,108 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log"
 	"net/http"
-	"time"
+	"net/http/httptest"
 
 	"github.com/beanscc/fetch"
+	"github.com/beanscc/fetch/body"
 )
 
 func main() {
-	type searchResp struct {
-		List []struct {
-			Value struct {
-				SubTag          string `json:"subtag" xml:"subtag"`
-				Location        string `json:"location"`
-				MainCategoryIDS string `json:"maincategoryids"`
-				DataType        string `json:"datatype"`
-				ID              int    `json:"id_,string"`
-				KeyWord         string `json:"suggestKeyWord"`
-			} `json:"valueMap"`
-		} `json:"recordList"`
-		Code int `json:"code"`
+	type Resp struct {
+		Name   string `json:"name"`
+		Age    uint8  `json:"age"`
+		Addr   string `json:"address"`
+		Mobile string `json:"mobile"`
 	}
 
-	var sr, sr2 searchResp
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		out := baseResp{
+			Code: 0,
+			Msg:  "ok",
+			Data: &Resp{
+				Name:   "ming.liu",
+				Age:    20,
+				Addr:   "beijing wangfujing street",
+				Mobile: "+86-13800000000",
+			},
+		}
 
-	f := fetch.New("https://www.dianping.com",
-		fetch.Debug(false),
-		// fetch.Interceptors(interceptorLog),
-		fetch.Interceptors(fetch.LogInterceptor(nil)),
-		fetch.Timeout(3*time.Second),
-	)
-	err := f.Get(context.Background(), "/bar/search").
-		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", 2).
-		SetHeader("k1", "123").
-		BindJSON(&sr)
-	fmt.Printf("err=%v, res=%v\n", err, sr)
+		res, _ := json.Marshal(out)
+		w.Header().Set("content-type", body.MIMEJSON)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(res)
+	}))
 
-	// 请求方法内部会 clone 一个新的 Fetch 对象
-	fmt.Println("\n==============================================")
+	// var data Resp
+	// res := newBaseResp(&data)
+	// err := fetch.Get(context.Background(), ts.URL+"/api/user").
+	// 	Query("id", 10).
+	// 	BindJSON(&res)
 
-	err2 := f.Get(context.Background(), "/bar/search").
-		// Timeout(100*time.Millisecond).  // 超时
-		Query("cityId", 3).
-		BindJSON(&sr2)
-	fmt.Printf("err2=%v, res2=%v\n", err2, sr2)
+	// OR
+
+	f := fetch.New(ts.URL,
+		fetch.Debug(true),
+		fetch.Interceptors(
+			// fetch.LogInterceptor 会输出以下日志内容
+			// 2020/06/30 17:34:12 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:60574/api/user?id=10, header: map[], body: , latency: 1.146575ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
+			fetch.LogInterceptor(&fetch.LogInterceptorRequest{
+				ExcludeReqHeader: nil,
+				MaxReqBody:       0,
+				MaxRespBody:      0,
+				Logger: func(ctx context.Context, format string, args ...interface{}) {
+					v1, _ := ctx.Value("k1").(string)
+					allArgs := []interface{}{v1}
+					allArgs = append(allArgs, args...)
+					log.Printf("extra k1:%v, "+format, allArgs...)
+				},
+			}),
+		))
+
+	ctx := context.WithValue(context.Background(), "k1", "v1")
+
+	var data Resp
+	res := newBaseResp(&data)
+	err := f.Get(ctx, "api/user").
+		Query("id", 10).
+		BindJSON(&res)
+	if err != nil {
+		log.Printf("fetch.Get() failed. err:%v", err)
+		return
+	}
+	log.Printf("fetch.Get() data:%+v", res.Data) // output: fetch.Get() data:&{Name:ming.liu Age:20 Addr:beijing wangfujing street Mobile:+86-13800000000}
+
+	// output:
+	/*
+		2020/06/30 17:34:12 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
+		Host: 127.0.0.1:60472
+		User-Agent: Go-http-client/1.1
+		Accept-Encoding: gzip
+
+		2020/06/30 17:34:12 [Fetch-Debug] HTTP/1.1 200 OK
+		Content-Length: 122
+		Content-Type: application/json
+		Date: Tue, 30 Jun 2020 09:34:12 GMT
+
+		{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}
+		2020/06/30 17:34:12 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:60574/api/user?id=10, header: map[], body: , latency: 1.146575ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
+		2020/06/30 17:34:12 fetch.Get() data:&{Name:ming.liu Age:20 Addr:beijing wangfujing street Mobile:+86-13800000000}
+	*/
 }
 
-func interceptorLog(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
-	log.Printf("[log] start ...")
-	resp, b, err := handler(ctx, req)
-	if err != nil {
-		log.Printf("[log] handler failed. err=%v", err)
-		return resp, b, err
-	}
+type baseResp struct {
+	Data interface{} `json:"data,empty"`
+	Code int         `json:"code"`
+	Msg  string      `json:"msg"`
+}
 
-	if resp.StatusCode == http.StatusOK {
-		log.Printf("[log] http.StatusCode = ok")
-		//var b []byte
-		//b, resp.Body, err = fetch.DrainBody(resp.Body)
-		log.Printf("[log] resp.Body=%s, err=%v", b, err)
+func newBaseResp(data interface{}) *baseResp {
+	return &baseResp{
+		Data: data,
+		Code: 0,
+		Msg:  "ok",
 	}
-
-	log.Printf("[log] end ...")
-	return resp, b, err
 }
