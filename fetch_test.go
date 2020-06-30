@@ -14,45 +14,7 @@ import (
 
 	"github.com/beanscc/fetch"
 	"github.com/beanscc/fetch/body"
-	"github.com/beanscc/fetch/util"
 )
-
-func testFilterOk(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
-	log.Printf("[filterOK] start")
-	resp, bb, err := handler(ctx, req)
-	if err != nil {
-		log.Printf("[filterOK] err=%v", err)
-		return resp, bb, err
-	}
-
-	if resp.StatusCode == http.StatusOK {
-		log.Printf("[filterOK] ok")
-		// return nil, errors.New("[filterOk] filtered")
-		var b []byte
-		b, resp.Body, err = util.DrainBody(resp.Body)
-		log.Printf("[filterOk] resp.Body=%s..., err=%v", b, err)
-	}
-
-	log.Printf("[filterOK] end")
-	return resp, bb, err
-}
-
-func testFilter1(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
-	log.Printf("[filter-1] start")
-	req.Header.Add("x-request-id", "xxxxx")
-	var b []byte
-	resp, b, err := handler(ctx, req)
-	if err != nil {
-		log.Printf("[filter-1] err=%v", err)
-		return resp, b, err
-	}
-
-	// b, resp.Body, err = DrainBody(resp.Body)
-	log.Printf("[filter-1] resp.Body=%s..., err=%v", b, err)
-	log.Printf("[filter-1] end")
-
-	return resp, b, err
-}
 
 type testBaseResp struct {
 	Data interface{} `json:"data,omitempty" xml:"data,omitempty"`
@@ -173,9 +135,20 @@ func TestFetchPostJSON(t *testing.T) {
 		fmt.Fprintln(w, out.json())
 	}))
 
-	ctx := context.Background()
 	var res testBaseResp
-	f := fetch.New(ts.URL, fetch.Debug(true))
+	f := fetch.New(ts.URL, fetch.Debug(true), fetch.Interceptors(
+		// fetch.LogInterceptor 会输出以下日志内容
+		fetch.LogInterceptor(&fetch.LogInterceptorRequest{
+			ExcludeReqHeader: nil,
+			MaxReqBody:       0,
+			MaxRespBody:      0,
+			Logger: func(ctx context.Context, format string, args ...interface{}) {
+				log.Printf(format, args...)
+			},
+		}),
+	))
+
+	ctx := context.Background()
 	err := f.Post(ctx, "api/user").
 		JSON(map[string]interface{}{
 			"name": "ming.liu",
@@ -207,6 +180,7 @@ func TestFetchPostJSON(t *testing.T) {
 		X-Request-Id: trace-id-1593504599030600000
 
 		{"code":0,"msg":"ok"}
+		2020/06/30 16:09:59 [Fetch] method: POST, url: http://127.0.0.1:60661/api/user, header: map[Content-Type:[application/json]], body: {"age":18,"name":"ming.liu"}, latency: 995.441µs, status: 200, resp: {"code":0,"msg":"ok"}
 		--- PASS: TestFetchPostJSON (0.00s)
 		    fetch_test.go:283: TestFetchPostJSON res:{Data:<nil> Code:0 Msg:ok}
 	*/
