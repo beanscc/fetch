@@ -68,6 +68,13 @@ func main() {
 	var data Resp
 	res := newBaseResp(&data)
 	err := f.Get(ctx, "api/user").
+		AddHeader("hk_1", "hk_1_val").
+		AddHeader(map[string]interface{}{
+			"hk_2": 24,
+			"hk_3": "hk_3_val",
+		}).
+		AddHeader("hk_4", 4, map[string]interface{}{"hk_5": 66.66}, "hk_6", "hk_6_val").
+		SetHeader("hk_1", 111).
 		Query("id", 10).
 		BindJSON(&res)
 	if err != nil {
@@ -78,19 +85,25 @@ func main() {
 
 	// output:
 	/*
-		2020/06/30 17:34:12 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
-		Host: 127.0.0.1:60472
+		2020/07/01 16:41:38 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
+		Host: 127.0.0.1:50305
 		User-Agent: Go-http-client/1.1
+		Hk_1: 111
+		Hk_2: 24
+		Hk_3: hk_3_val
+		Hk_4: 4
+		Hk_5: 66.66
+		Hk_6: hk_6_val
 		Accept-Encoding: gzip
 
-		2020/06/30 17:34:12 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/07/01 16:41:38 [Fetch-Debug] HTTP/1.1 200 OK
 		Content-Length: 122
 		Content-Type: application/json
-		Date: Tue, 30 Jun 2020 09:34:12 GMT
+		Date: Wed, 01 Jul 2020 08:41:38 GMT
 
 		{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}
-		2020/06/30 17:34:12 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:60574/api/user?id=10, header: map[], body: , latency: 1.146575ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
-		2020/06/30 17:34:12 fetch.Get() data:&{Name:ming.liu Age:20 Addr:beijing wangfujing street Mobile:+86-13800000000}
+		2020/07/01 16:41:38 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:50305/api/user?id=10, header: map[Hk_1:[111] Hk_2:[24] Hk_3:[hk_3_val] Hk_4:[4] Hk_5:[66.66] Hk_6:[hk_6_val]], body: , latency: 1.038371ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
+		2020/07/01 16:41:38 fetch.Get() data:&{Name:ming.liu Age:20 Addr:beijing wangfujing street Mobile:+86-13800000000}
 	*/
 }
 
