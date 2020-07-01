@@ -207,14 +207,76 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 }
 
 // AddHeader 添加 http header
-func (f *Fetch) AddHeader(key string, value interface{}) *Fetch {
-	f.onceReq.Header.Add(key, util.ToString(value))
+// args 支持 key-val 对，或 map[string]interface{}，或者 key-val 对和map[string]interface{}交替组合
+func (f *Fetch) AddHeader(args ...interface{}) *Fetch {
+	if f.err != nil {
+		return f
+	}
+
+	if len(args) > 0 {
+		for i := 0; i < len(args); {
+			if m, ok := args[i].(map[string]interface{}); ok {
+				for k, v := range m {
+					f.onceReq.Header.Add(k, util.ToString(v))
+				}
+				i++
+				continue
+			}
+
+			if i == len(args)-1 {
+				f.err = errors.New("fetch.AddHeader: args must be key-val pair or map[string]interface{}")
+				return f
+			}
+
+			// key-val pair
+			key, val := args[i], args[i+1]
+			if keyStr, ok := key.(string); ok {
+				f.onceReq.Header.Add(keyStr, util.ToString(val))
+			} else {
+				f.err = fmt.Errorf("fetch.AddHeader: args key-val parir key[%v] must be string type", key)
+				return f
+			}
+
+			i += 2
+		}
+	}
 	return f
 }
 
 // SetHeader 设置 http header
-func (f *Fetch) SetHeader(key string, value interface{}) *Fetch {
-	f.onceReq.Header.Set(key, util.ToString(value))
+// args 支持 key-val 对，或 map[string]interface{}，或者 key-val 对和map[string]interface{}交替组合
+func (f *Fetch) SetHeader(args ...interface{}) *Fetch {
+	if f.err != nil {
+		return f
+	}
+
+	if len(args) > 0 {
+		for i := 0; i < len(args); {
+			if m, ok := args[i].(map[string]interface{}); ok {
+				for k, v := range m {
+					f.onceReq.Header.Set(k, util.ToString(v))
+				}
+				i++
+				continue
+			}
+
+			if i == len(args)-1 {
+				f.err = errors.New("fetch.SetHeader: args must be key-val pair or map[string]interface{}")
+				return f
+			}
+
+			// key-val pair
+			key, val := args[i], args[i+1]
+			if keyStr, ok := key.(string); ok {
+				f.onceReq.Header.Set(keyStr, util.ToString(val))
+			} else {
+				f.err = fmt.Errorf("fetch.SetHeader: args key-val parir key[%v] must be string type", key)
+				return f
+			}
+
+			i += 2
+		}
+	}
 	return f
 }
 
