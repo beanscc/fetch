@@ -13,7 +13,7 @@ import (
 
 // MultipartForm multipart/form-data
 type MultipartForm struct {
-	param       url.Values // 表单字段（不含文件）
+	data        url.Values // 表单字段（不含文件）
 	files       []File     // 表单文件
 	contentType string     // 表单 content-type 头信息
 }
@@ -29,14 +29,14 @@ type File struct {
 // NewFormDataBody return new MultipartForm
 func NewMultipartForm(uv url.Values, fs ...File) *MultipartForm {
 	return &MultipartForm{
-		param: uv,
+		data:  uv,
 		files: fs,
 	}
 }
 
 // NewMultipartFormFromMap return new MultipartForm from map
 func NewMultipartFormFromMap(m map[string]interface{}, fs ...File) *MultipartForm {
-	uv := getValues(m)
+	uv := map2URLValues(m)
 	return NewMultipartForm(uv, fs...)
 }
 
@@ -47,17 +47,14 @@ func escapeQuotes(s string) string {
 }
 
 // CreateFormFile Create form file
-func (mf *MultipartForm) CreateFormFile(w *multipart.Writer, fieldName, filename string, fileContentType string, fileContent []byte) (int, error) {
+func (mf *MultipartForm) CreateFormFile(w *multipart.Writer, fieldName, filename string, contentType string, fileContent []byte) (int, error) {
 	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition",
-		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-			escapeQuotes(fieldName), escapeQuotes(filename)))
-
-	if fileContentType == "" {
-		fileContentType = http.DetectContentType(fileContent)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(fieldName), escapeQuotes(filename)))
+	if contentType == "" {
+		contentType = http.DetectContentType(fileContent)
 	}
 
-	h.Set("Content-Type", fileContentType)
+	h.Set("Content-Type", contentType)
 	part, err := w.CreatePart(h)
 	if err != nil {
 		return 0, err
@@ -77,7 +74,7 @@ func (mf *MultipartForm) Body() (io.Reader, error) {
 	mf.contentType = w.FormDataContentType()
 
 	// 表单参数
-	for k, v := range mf.param {
+	for k, v := range mf.data {
 		for _, vv := range v {
 			if err := w.WriteField(k, vv); err != nil {
 				return nil, err

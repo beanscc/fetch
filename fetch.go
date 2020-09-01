@@ -100,6 +100,10 @@ func (f *Fetch) Context() context.Context {
 
 // WithOptions 返回一个设置了新 option 的 *Fetch 对象
 func (f *Fetch) WithOptions(options ...Option) *Fetch {
+	if len(options) == 0 {
+		return f
+	}
+
 	nf := f.clone()
 	for _, option := range options {
 		option.Apply(nf)
@@ -370,20 +374,20 @@ func (f *Fetch) MultipartForm(p map[string]interface{}, fs ...body.File) *Fetch 
 
 // Bind 按已注册 bind 类型，解析 http 响应
 func (f *Fetch) Bind(bindType string, v interface{}) error {
-	res := f.Do()
-	if res.err != nil {
-		return res.err
+	b, ok := f.bind[bindType]
+	if !ok {
+		return fmt.Errorf("fetch: unknown bind type:%v", bindType)
 	}
 
-	if res.resp == nil {
+	resp, respBody, err := f.Resp()
+	if err != nil {
+		return err
+	}
+	if resp == nil {
 		return errors.New("fetch: nil http.Response")
 	}
 
-	if b, ok := f.bind[bindType]; ok {
-		return b.Bind(res.resp, res.body, v)
-	}
-
-	return fmt.Errorf("fetch: unknown bind type:%v", bindType)
+	return b.Bind(resp, respBody, v)
 }
 
 // BindJSON bind http.Body with json
@@ -438,21 +442,13 @@ func (f *Fetch) do() *response {
 	}
 
 	resp, b, err := f.chainInterceptor(f.Context(), req, httpDoHandler)
-	return &response{
-		resp: resp,
-		body: b,
-		err:  err,
-	}
+	return &response{resp: resp, body: b, err: err}
 }
 
-// Do return fetch result
-func (f *Fetch) Do() *response {
-	return f.do()
-}
-
-// Resp return http.Response
-func (f *Fetch) Resp() (*http.Response, error) {
-	return f.do().Resp()
+// Resp return http.Response, resp body, err
+func (f *Fetch) Resp() (*http.Response, []byte, error) {
+	res := f.do()
+	return res.resp, res.body, res.err
 }
 
 // Bytes 返回http响应body消息体

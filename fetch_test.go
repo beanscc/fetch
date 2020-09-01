@@ -121,7 +121,7 @@ func TestFetchGet(t *testing.T) {
 		X-Request-Id: trace-id-1593504742037996000
 
 		{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}
-		2020/06/30 16:12:22 [Fetch] method: GET, url: http://127.0.0.1:58785/api/user?id=10&name=ming, header: map[X-Request-Id:[trace-id-1593504742037996000]], body: , latency: 1.088405ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>, extra k1:v1
+		2020/06/30 16:12:22 [Fetch] method: GET, url: http://127.0.0.1:58785/api/user?id=10&name=ming, header: map[X-Request-Id:[trace-id-1593504742037996000]], body: '', latency: 1.088405ms, status: 200, resp: '{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}', err: <nil>, extra k1:v1
 		--- PASS: TestFetchGet (0.00s)
 		    fetch_test.go:147: resp.data=fetch_test.Resp{Name:"ming.liu", Age:0x14, Addr:"beijing wangfujing street", Mobile:"+86-13800000000"}
 	*/
@@ -132,7 +132,7 @@ func TestFetchPostJSON(t *testing.T) {
 		w.Header().Set("content-type", body.MIMEJSON)
 		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
 		out := newTestBaseResp(nil)
-		fmt.Fprintln(w, out.json())
+		fmt.Fprint(w, out.json())
 	}))
 
 	var res testBaseResp
@@ -180,7 +180,7 @@ func TestFetchPostJSON(t *testing.T) {
 		X-Request-Id: trace-id-1593504599030600000
 
 		{"code":0,"msg":"ok"}
-		2020/06/30 16:09:59 [Fetch] method: POST, url: http://127.0.0.1:60661/api/user, header: map[Content-Type:[application/json]], body: {"age":18,"name":"ming.liu"}, latency: 995.441µs, status: 200, resp: {"code":0,"msg":"ok"}
+		2020/06/30 16:09:59 [Fetch] method: POST, url: http://127.0.0.1:60661/api/user, header: map[Content-Type:[application/json]], body: '{"age":18,"name":"ming.liu"}', latency: 995.441µs, status: 200, resp: '{"code":0,"msg":"ok"}', err: <nil>
 		--- PASS: TestFetchPostJSON (0.00s)
 		    fetch_test.go:283: TestFetchPostJSON res:{Data:<nil> Code:0 Msg:ok}
 	*/
@@ -191,7 +191,7 @@ func TestFetchPostXML(t *testing.T) {
 		w.Header().Set("content-type", body.MIMEXML)
 		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
 		out := newTestBaseResp(nil)
-		fmt.Fprintln(w, out.xml())
+		fmt.Fprint(w, out.xml())
 	}))
 
 	type User struct {
@@ -248,7 +248,7 @@ func TestFetchPostForm(t *testing.T) {
 		w.Header().Set("content-type", body.MIMEJSON)
 		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
 		out := newTestBaseResp(nil)
-		fmt.Fprintln(w, out.json())
+		fmt.Fprint(w, out.json())
 	}))
 
 	ctx := context.Background()
@@ -294,7 +294,7 @@ func TestFetchPostMultipartForm(t *testing.T) {
 		w.Header().Set("content-type", body.MIMEJSON)
 		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
 		out := newTestBaseResp(nil)
-		fmt.Fprintln(w, out.json())
+		fmt.Fprint(w, out.json())
 	}))
 
 	ctx := context.Background()
@@ -391,6 +391,10 @@ func TestFetch_WithOptions(t *testing.T) {
 	}))
 
 	f := fetch.New(ts.URL, fetch.Debug(true)) // f 开启 debug
+	// 或
+	f = fetch.New(ts.URL, &fetch.Options{
+		Debug: true,
+	})
 
 	// Get() 方法会 clone 生成一个新的 *Fetch 对象（会clone f 的一些全局属性，清空一次性请求的属性），所以 Get() 返回的 *Fetch 对象，debug 还是开启的，会输出请求日志
 	f.Get(context.Background(), "path").Bytes()

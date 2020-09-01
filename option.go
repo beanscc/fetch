@@ -7,7 +7,7 @@ import (
 	"github.com/beanscc/fetch/binding"
 )
 
-// Option
+// Option 用于设置 Fetch 属性的接口
 type Option interface {
 	Apply(*Fetch)
 }
@@ -61,4 +61,38 @@ func Debug(debug bool) Option {
 	return optionFunc(func(f *Fetch) {
 		f.debug = debug
 	})
+}
+
+// Options 用于设置 Fetch 属性
+type Options struct {
+	Debug        bool
+	Timeout      time.Duration
+	Bind         map[string]binding.Binding
+	Client       *http.Client
+	Interceptors []Interceptor
+}
+
+func (o *Options) Apply(f *Fetch) {
+	f.debug = o.Debug
+	f.timeout = o.Timeout
+
+	for k, v := range o.Bind {
+		f.bind[k] = v
+	}
+
+	if o.Client != nil {
+		f.client = o.Client
+	}
+
+	if len(o.Interceptors) > 0 {
+		for _, interceptor := range o.Interceptors {
+			if interceptor == nil {
+				panic("fetch: nil interceptor")
+			}
+
+			f.interceptors = append(f.interceptors, interceptor)
+		}
+
+		f.chainInterceptor = chainInterceptor(f.interceptors...)
+	}
 }
