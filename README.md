@@ -100,16 +100,13 @@ func main() {
 	// 	BindJSON(&res)
 
 	// OR
-
-	f := fetch.New(ts.URL,
-		fetch.Debug(true),
-		fetch.Interceptors(
-			// fetch.LogInterceptor 会输出以下日志内容
-			// 2020/06/30 17:34:12 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:60574/api/user?id=10, header: map[], body: , latency: 1.146575ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
+	f := fetch.New(ts.URL, &fetch.Options{
+		Debug: true,
+		Interceptors: []fetch.Interceptor{
+			// fetch.LogInterceptor 会输出请求和响应日志
 			fetch.LogInterceptor(&fetch.LogInterceptorRequest{
-				ExcludeReqHeader: nil,
-				MaxReqBody:       0,
-				MaxRespBody:      0,
+				MaxReqBody: 5,
+				// MaxRespBody: 10,
 				Logger: func(ctx context.Context, format string, args ...interface{}) {
 					v1, _ := ctx.Value("k1").(string)
 					allArgs := []interface{}{v1}
@@ -117,13 +114,14 @@ func main() {
 					log.Printf("extra k1:%v, "+format, allArgs...)
 				},
 			}),
-		))
+		},
+	})
 
 	ctx := context.WithValue(context.Background(), "k1", "v1")
 
 	var data Resp
 	res := newBaseResp(&data)
-	err := f.Get(ctx, "api/user").
+	err := f.Post(ctx, "api/user").
 		AddHeader("hk_1", "hk_1_val").
 		AddHeader(map[string]interface{}{
 			"hk_2": 24,
@@ -132,6 +130,7 @@ func main() {
 		AddHeader("hk_4", 4, map[string]interface{}{"hk_5": 66.66}, "hk_6", "hk_6_val").
 		SetHeader("hk_1", 111).
 		Query("id", 10).
+		JSON(`{"age": 18}`).
 		BindJSON(&res)
 	if err != nil {
 		log.Printf("fetch.Get() failed. err:%v", err)
@@ -152,13 +151,17 @@ func main() {
 		Hk_6: hk_6_val
 		Accept-Encoding: gzip
 
+		b
+		{"age": 18}
+		0
+
 		2020/07/01 16:41:38 [Fetch-Debug] HTTP/1.1 200 OK
 		Content-Length: 122
 		Content-Type: application/json
 		Date: Wed, 01 Jul 2020 08:41:38 GMT
 
 		{"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}
-		2020/07/01 16:41:38 extra k1:v1, [Fetch] method: GET, url: http://127.0.0.1:50305/api/user?id=10, header: map[Hk_1:[111] Hk_2:[24] Hk_3:[hk_3_val] Hk_4:[4] Hk_5:[66.66] Hk_6:[hk_6_val]], body: , latency: 1.038371ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
+		2020/07/01 16:41:38 extra k1:v1, [Fetch] method: POST,, url: http://127.0.0.1:50305/api/user?id=10, header: map[Hk_1:[111] Hk_2:[24] Hk_3:[hk_3_val] Hk_4:[4] Hk_5:[66.66] Hk_6:[hk_6_val]], body: '{"age...', latency: 1.038371ms, status: 200, resp: {"data":{"name":"ming.liu","age":20,"address":"beijing wangfujing street","mobile":"+86-13800000000"},"code":0,"msg":"ok"}, err: <nil>
 		2020/07/01 16:41:38 fetch.Get() data:&{Name:ming.liu Age:20 Addr:beijing wangfujing street Mobile:+86-13800000000}
 	*/
 }
@@ -191,6 +194,11 @@ f2 := fetch.New("http://api.domain.com")
 
 // 指定基础域名，同时开启 debug 模式（debug 模式，将使用标准包 "log" 以文本格式，输出请求和响应的详细日志）
 f3 := fetch.New("http://api.domain.com", fetch.Debug(true))
+
+f4 := fetch.New("", &fetch.Options{
+    Debug: true,
+    Timeout: 10 * time.Second,
+})
 ```
 
 #### Options 的使用
@@ -681,11 +689,8 @@ f := f.Post(ctx, "api/user")
 // 支持 string 类型 json 字符串
 f.JSON(`{"name": "alice", "age": 12}`)
 
-// 获取 *fetch.response
-fRes, err := f.Do()
-
-// 获取 *http.Response
-res, err := f.Resp()
+// 获取 *http.Response, 及响应消息体
+res, resBytes, err := f.Resp()
 
 // 获取 http 响应 body 消息体的 []byte
 resBytes, err := f.Bytes()

@@ -64,7 +64,10 @@ type LogInterceptorRequest struct {
 
 func LogInterceptor(param *LogInterceptorRequest) Interceptor {
 	return func(ctx context.Context, req *http.Request, httpHandler Handler) (resp *http.Response, respBody []byte, err error) {
-		var reqBody []byte
+		var (
+			reqBody    []byte
+			logReqBody []byte
+		)
 		if req.Body != nil { // has body
 			reqBody, req.Body, err = util.DrainBody(req.Body)
 			if err != nil {
@@ -72,8 +75,10 @@ func LogInterceptor(param *LogInterceptorRequest) Interceptor {
 			}
 
 			if param.MaxReqBody > 0 && len(reqBody) > param.MaxReqBody { // 截取 req body
-				reqBody = reqBody[:param.MaxReqBody]
-				reqBody = append(reqBody, "..."...)
+				logReqBody = append(logReqBody, reqBody[:param.MaxReqBody]...)
+				logReqBody = append(logReqBody, "..."...)
+			} else {
+				logReqBody = reqBody
 			}
 		}
 
@@ -95,22 +100,21 @@ func LogInterceptor(param *LogInterceptorRequest) Interceptor {
 		}
 		end := time.Now()
 
-		logger := param.Logger
-		if logger == nil {
-			logger = defaultLogLogger
-		}
-
 		var logRespBody []byte
 		if param.MaxRespBody > 0 && len(respBody) > param.MaxRespBody { // 截取 resp body
-			logRespBody = respBody[:param.MaxRespBody]
+			logRespBody = append(logRespBody, respBody[:param.MaxRespBody]...)
 			logRespBody = append(logRespBody, "...."...)
 		} else {
 			logRespBody = respBody
 		}
 
-		logger(ctx, "[Fetch] method: %s, url: %s, header: %s, body: %s, latency: %s, status: %d, resp: %s, err: %v",
-			req.Method, req.URL.String(), h, reqBody, end.Sub(start),
-			statusCode, logRespBody, err)
+		logger := param.Logger
+		if logger == nil {
+			logger = defaultLogLogger
+		}
+
+		logger(ctx, "[Fetch] method: %s, url: %s, header: %s, body: '%s', latency: %s, status: %d, resp: '%s', err: %v",
+			req.Method, req.URL.String(), h, logReqBody, end.Sub(start), statusCode, logRespBody, err)
 
 		return resp, respBody, err
 	}

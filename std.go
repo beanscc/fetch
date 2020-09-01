@@ -4,34 +4,26 @@ import "context"
 
 var defaultFetch = New("")
 
-func Get(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Get(ctx, refPath)
+func Get(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Get(ctx, url)
 }
 
-func Post(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Post(ctx, refPath)
+func Post(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Post(ctx, url)
 }
 
-func Put(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Put(ctx, refPath)
+func Put(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Put(ctx, url)
 }
 
-func Delete(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Delete(ctx, refPath)
+func Delete(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Delete(ctx, url)
 }
 
-func Head(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Head(ctx, refPath)
+func Head(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Head(ctx, url)
 }
 
-func Patch(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Patch(ctx, refPath)
-}
-
-func Trace(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Trace(ctx, refPath)
-}
-
-func Options(ctx context.Context, refPath string) *Fetch {
-	return defaultFetch.Options(ctx, refPath)
+func Patch(ctx context.Context, url string) *Fetch {
+	return defaultFetch.Patch(ctx, url)
 }

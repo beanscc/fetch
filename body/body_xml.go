@@ -8,20 +8,20 @@ import (
 
 // XML xml body
 type XML struct {
-	// param xml body 消息体
+	// data 需要 xml 序列化的 body 数据
 	// 若类型是 string/[]byte 则，按 xml 消息字符串处理
 	// 若类型是 以上类型之外的类型，则按 xml 序列化后的字符串处理
-	param interface{}
+	data interface{}
 }
 
-// NewXML return new xml with param p
-func NewXML(p interface{}) *XML {
-	return &XML{p}
+// NewXML return *XML
+func NewXML(v interface{}) *XML {
+	return &XML{v}
 }
 
 // Body return http req body
 func (x *XML) Body() (io.Reader, error) {
-	b, err := x.getJSONBytes()
+	b, err := x.Bytes()
 	if err != nil {
 		return nil, err
 	}
@@ -30,15 +30,15 @@ func (x *XML) Body() (io.Reader, error) {
 	return payload, nil
 }
 
-func (x *XML) getJSONBytes() ([]byte, error) {
+func (x *XML) Bytes() ([]byte, error) {
 	var b []byte
-	switch x.param.(type) {
+	switch x.data.(type) {
 	case string:
-		b = []byte(x.param.(string))
+		b = []byte(x.data.(string))
 	case []byte:
-		b = x.param.([]byte)
+		b = x.data.([]byte)
 	default:
-		bs, err := xml.Marshal(x.param)
+		bs, err := xml.Marshal(x.data)
 		if err != nil {
 			return nil, err
 		}

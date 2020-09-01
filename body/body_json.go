@@ -8,20 +8,20 @@ import (
 
 // Json json body
 type JSON struct {
-	// param 需要json序列化的参数
+	// data 需要json序列化的数据
 	// 若类型是 string/[]byte 则，按 json 字符串处理
 	// 若其他类型，则按 json 格式进行序列化
-	param interface{}
+	data interface{}
 }
 
 // NewJSON return JSON
-func NewJSON(p interface{}) *JSON {
-	return &JSON{param: p}
+func NewJSON(v interface{}) *JSON {
+	return &JSON{data: v}
 }
 
 // Body return http req body
 func (j *JSON) Body() (io.Reader, error) {
-	b, err := j.getJSONBytes()
+	b, err := j.Bytes()
 	if err != nil {
 		return nil, err
 	}
@@ -30,15 +30,15 @@ func (j *JSON) Body() (io.Reader, error) {
 	return payload, nil
 }
 
-func (j *JSON) getJSONBytes() ([]byte, error) {
+func (j *JSON) Bytes() ([]byte, error) {
 	var b []byte
-	switch j.param.(type) {
+	switch j.data.(type) {
 	case string:
-		b = []byte(j.param.(string))
+		b = []byte(j.data.(string))
 	case []byte:
-		b = j.param.([]byte)
+		b = j.data.([]byte)
 	default:
-		bs, err := json.Marshal(j.param)
+		bs, err := json.Marshal(j.data)
 		if err != nil {
 			return nil, err
 		}

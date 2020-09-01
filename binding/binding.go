@@ -11,8 +11,8 @@ type Binding interface {
 
 	// Bind 解析 http.Response 的func
 	// resp 可能是 nil，也可能由于中间件在读取完resp.Body 后未还原body，导致 body为空
-	// out 应该是一个指针对象
-	Bind(resp *http.Response, body []byte, out interface{}) error
+	// v 应该是一个指针对象
+	Bind(resp *http.Response, body []byte, v interface{}) error
 }
 
 var (
