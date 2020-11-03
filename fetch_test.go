@@ -14,6 +14,7 @@ import (
 
 	"github.com/beanscc/fetch"
 	"github.com/beanscc/fetch/body"
+	"github.com/beanscc/fetch/util"
 )
 
 type testBaseResp struct {
@@ -44,6 +45,29 @@ func (r testBaseResp) xml() string {
 		panic(err)
 	}
 	return string(bs)
+}
+
+func TestPost(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", body.MIMEJSON)
+		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
+		out := newTestBaseResp(nil)
+		fmt.Fprint(w, out.json())
+	}))
+
+	var res testBaseResp
+
+	ctx := context.Background()
+	err := fetch.Post(ctx, ts.URL+"/api/user").
+		JSON(map[string]interface{}{
+			"name": "ming.liu",
+			"age":  18,
+		}).BindJSON(&res)
+	if err != nil {
+		t.Errorf("TestPost failed. err:%v", err)
+		return
+	}
+	t.Logf("TestPost res:%+v", res)
 }
 
 // go test -v -run TestFetchGet
@@ -108,13 +132,13 @@ func TestFetchGet(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:12:22 [Fetch-Debug] GET /api/user?id=10&name=ming HTTP/1.1
+		2020/06/30 16:12:22 [Fetch] GET /api/user?id=10&name=ming HTTP/1.1
 		Host: 127.0.0.1:58785
 		User-Agent: Go-http-client/1.1
 		X-Request-Id: trace-id-1593504742037996000
 		Accept-Encoding: gzip
 
-		2020/06/30 16:12:22 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:12:22 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 122
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:12:22 GMT
@@ -138,14 +162,7 @@ func TestFetchPostJSON(t *testing.T) {
 	var res testBaseResp
 	f := fetch.New(ts.URL, fetch.Debug(true), fetch.Interceptors(
 		// fetch.LogInterceptor 会输出以下日志内容
-		fetch.LogInterceptor(&fetch.LogInterceptorRequest{
-			ExcludeReqHeader: nil,
-			MaxReqBody:       0,
-			MaxRespBody:      0,
-			Logger: func(ctx context.Context, format string, args ...interface{}) {
-				log.Printf(format, args...)
-			},
-		}),
+		fetch.DefaultLogInterceptor,
 	))
 
 	ctx := context.Background()
@@ -162,7 +179,7 @@ func TestFetchPostJSON(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:09:59 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:09:59 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58717
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -173,7 +190,7 @@ func TestFetchPostJSON(t *testing.T) {
 		{"age":18,"name":"ming.liu"}
 		0
 
-		2020/06/30 16:09:59 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:09:59 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:09:59 GMT
@@ -220,7 +237,7 @@ func TestFetchPostXML(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:09:05 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:09:05 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58708
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -231,7 +248,7 @@ func TestFetchPostXML(t *testing.T) {
 		<user id="6135200011057538"><name>si.li</name><age>20</age><height>175</height></user>
 		0
 
-		2020/06/30 16:09:05 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:09:05 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 57
 		Content-Type: application/xml
 		Date: Tue, 30 Jun 2020 08:09:05 GMT
@@ -266,7 +283,7 @@ func TestFetchPostForm(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:08:06 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:08:06 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58696
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -277,7 +294,7 @@ func TestFetchPostForm(t *testing.T) {
 		age=25&name=wang.wu
 		0
 
-		2020/06/30 16:08:06 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:08:06 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:08:06 GMT
@@ -340,7 +357,7 @@ func TestFetchPostMultipartForm(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:18:38 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:18:38 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58880
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -373,7 +390,7 @@ func TestFetchPostMultipartForm(t *testing.T) {
 
 		0
 
-		2020/06/30 16:18:38 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:18:38 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:18:38 GMT
@@ -392,9 +409,9 @@ func TestFetch_WithOptions(t *testing.T) {
 
 	f := fetch.New(ts.URL, fetch.Debug(true)) // f 开启 debug
 	// 或
-	f = fetch.New(ts.URL, &fetch.Options{
-		Debug: true,
-	})
+	// f = fetch.New(ts.URL, &fetch.Options{
+	// 	Debug: true,
+	// })
 
 	// Get() 方法会 clone 生成一个新的 *Fetch 对象（会clone f 的一些全局属性，清空一次性请求的属性），所以 Get() 返回的 *Fetch 对象，debug 还是开启的，会输出请求日志
 	f.Get(context.Background(), "path").Bytes()
@@ -407,25 +424,74 @@ func TestFetch_WithOptions(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 10:31:59 [Fetch-Debug] GET /path HTTP/1.1
+		2020/06/30 10:31:59 [Fetch] GET /path HTTP/1.1
 		Host: 127.0.0.1:51118
 		User-Agent: Go-http-client/1.1
 		Accept-Encoding: gzip
 
-		2020/06/30 10:31:59 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 10:31:59 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 2
 		Content-Type: text/plain; charset=utf-8
 		Date: Tue, 30 Jun 2020 02:31:59 GMT
 
 		ok
-		2020/06/30 10:31:59 [Fetch-Debug] GET /path3 HTTP/1.1
+		2020/06/30 10:31:59 [Fetch] GET /path3 HTTP/1.1
 		Host: 127.0.0.1:51118
 		User-Agent: Go-http-client/1.1
 		Accept-Encoding: gzip
 
-		2020/06/30 10:31:59 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 10:31:59 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 2
 		Content-Type: text/plain; charset=utf-8
 		Date: Tue, 30 Jun 2020 02:31:59 GMT
 	*/
+}
+
+// go test -v -bench . -benchmem -run BenchmarkFetch_PostJSON
+func BenchmarkFetch_PostJSON(b *testing.B) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", body.MIMEJSON)
+		w.Header().Add("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano()))
+		out := newTestBaseResp(nil)
+		fmt.Fprint(w, out.json())
+	}))
+
+	f := fetch.New(ts.URL, fetch.Debug(true), fetch.Interceptors(
+		func(ctx context.Context, req *http.Request, handler fetch.Handler) (*http.Response, []byte, error) {
+			b, err := req.GetBody()
+			if b != nil {
+				bs := make([]byte, req.ContentLength)
+				_, err = b.Read(bs)
+				log.Printf("GetBody1 read body:%s, err:%v", bs, err)
+			}
+
+			util.ResetBody(req, []byte(`{"a":1}`)) // update
+			return handler(ctx, req)
+		},
+		// fetch.LogInterceptor 会输出以下日志内容
+		fetch.DefaultLogInterceptor,
+		func(ctx context.Context, req *http.Request, httpHandler fetch.Handler) (*http.Response, []byte, error) {
+			b, err := req.GetBody()
+			if b != nil {
+				bs := make([]byte, req.ContentLength)
+				_, err = b.Read(bs)
+				log.Printf("GetBody2 read body:%s, err:%v", bs, err)
+			}
+			return httpHandler(ctx, req)
+		},
+	))
+	for i := 0; i < b.N; i++ {
+		var res testBaseResp
+		ctx := context.Background()
+		err := f.Post(ctx, "api/user").
+			JSON(map[string]interface{}{
+				"name": "ming.liu",
+				"age":  18,
+			}).BindJSON(&res)
+		if err != nil {
+			log.Printf("BenchmarkFetch_PostJSON failed. err:%v", err)
+			return
+		}
+		log.Printf("BenchmarkFetch_PostJSON res:%+v", res)
+	}
 }

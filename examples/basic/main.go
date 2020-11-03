@@ -84,7 +84,7 @@ func main() {
 
 	// output:
 	/*
-		2020/07/01 16:41:38 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
+		2020/07/01 16:41:38 [Fetch] GET /api/user?id=10 HTTP/1.1
 		Host: 127.0.0.1:50305
 		User-Agent: Go-http-client/1.1
 		Hk_1: 111
@@ -99,7 +99,7 @@ func main() {
 		{"age": 18}
 		0
 
-		2020/07/01 16:41:38 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/07/01 16:41:38 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 122
 		Content-Type: application/json
 		Date: Wed, 01 Jul 2020 08:41:38 GMT
