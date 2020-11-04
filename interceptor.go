@@ -14,7 +14,7 @@ type Handler func(ctx context.Context, req *http.Request) (*http.Response, []byt
 
 // Interceptor 请求拦截器
 // 多个 interceptor one,two,three 则执行顺序是 one,two,three 的 handler 调用前的执行流，然后是 handler, 接着是 three,two,one 中 handler 调用之后的执行流
-type Interceptor func(ctx context.Context, req *http.Request, httpHandler Handler) (*http.Response, []byte, error)
+type Interceptor func(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error)
 
 // chainInterceptor 将多个 Interceptor 合并为一个
 func chainInterceptor(interceptors ...Interceptor) Interceptor {
@@ -51,9 +51,13 @@ func chainInterceptor(interceptors ...Interceptor) Interceptor {
 	}
 }
 
-var defaultLogLogger = func(ctx context.Context, format string, args ...interface{}) {
-	log.Printf(format, args...)
-}
+var (
+	defaultLogInterceptorLogger = func(ctx context.Context, format string, args ...interface{}) {
+		log.Printf(format, args...)
+	}
+
+	DefaultLogInterceptor = LogInterceptor(&LogInterceptorRequest{})
+)
 
 type LogInterceptorRequest struct {
 	ExcludeReqHeader map[string]bool                                               // 日志不记录的请求头
@@ -63,7 +67,7 @@ type LogInterceptorRequest struct {
 }
 
 func LogInterceptor(param *LogInterceptorRequest) Interceptor {
-	return func(ctx context.Context, req *http.Request, httpHandler Handler) (resp *http.Response, respBody []byte, err error) {
+	return func(ctx context.Context, req *http.Request, handler Handler) (resp *http.Response, respBody []byte, err error) {
 		var (
 			reqBody    []byte
 			logReqBody []byte
@@ -93,7 +97,7 @@ func LogInterceptor(param *LogInterceptorRequest) Interceptor {
 		}
 
 		start := time.Now()
-		resp, respBody, err = httpHandler(ctx, req)
+		resp, respBody, err = handler(ctx, req)
 		var statusCode int
 		if resp != nil {
 			statusCode = resp.StatusCode
@@ -110,7 +114,7 @@ func LogInterceptor(param *LogInterceptorRequest) Interceptor {
 
 		logger := param.Logger
 		if logger == nil {
-			logger = defaultLogLogger
+			logger = defaultLogInterceptorLogger
 		}
 
 		logger(ctx, "[Fetch] method: %s, url: %s, header: %s, body: '%s', latency: %s, status: %d, resp: '%s', err: %v",

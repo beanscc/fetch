@@ -6,24 +6,24 @@ import (
 	"net/http/httputil"
 )
 
-func debugRequest(req *http.Request, body bool) error {
+func dumpRequest(req *http.Request, body bool) error {
 	dump, err := httputil.DumpRequestOut(req, body)
 	if err != nil {
-		log.Printf("[Fetch-Debug] Dump request failed. err=%v", err)
+		log.Printf("[Fetch] dump request failed. err:%v", err)
 		return err
 	}
 
-	log.Printf("[Fetch-Debug] %s", dump)
+	log.Printf("[Fetch] %s", dump)
 	return nil
 }
 
-func debugResponse(resp *http.Response, body bool) error {
+func dumpResponse(resp *http.Response, body bool) error {
 	dump, err := httputil.DumpResponse(resp, body)
 	if err != nil {
-		log.Printf("[Fetch-Debug] Dump response failed. err=%v", err)
+		log.Printf("[Fetch] dump response failed. err:%v", err)
 		return err
 	}
 
-	log.Printf("[Fetch-Debug] %s", dump)
+	log.Printf("[Fetch] %s", dump)
 	return nil
 }

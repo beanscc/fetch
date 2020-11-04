@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -33,8 +32,8 @@ type Fetch struct {
 	client           *http.Client               // client
 	interceptors     []Interceptor              // 拦截器
 	chainInterceptor Interceptor                // 链式拦截器，由注册的拦截器合并而来
-	onceReq          *http.Request              // once req
-	debug            bool                       // debug
+	req              *request                   // once req
+	debug            bool                       // debug 输出请求和响应的详细信息，一般用于调试期间
 	err              error                      // error
 	ctx              context.Context            // ctx
 	timeout          time.Duration              // timeout duration
@@ -48,7 +47,7 @@ func New(baseURL string, options ...Option) *Fetch {
 		baseURL:          baseURL,
 		interceptors:     make([]Interceptor, 0),
 		chainInterceptor: chainInterceptor(),
-		onceReq:          newRequest(),
+		req:              newEmptyRequest(),
 		debug:            false,
 		err:              nil,
 		ctx:              context.Background(),
@@ -61,20 +60,13 @@ func New(baseURL string, options ...Option) *Fetch {
 	return f.WithOptions(options...)
 }
 
-func newRequest() *http.Request {
-	return &http.Request{
-		Header: make(http.Header),
-		Body:   nil,
-	}
-}
-
 // clone return a clone Fetch
 func (f *Fetch) clone() *Fetch {
 	nf := new(Fetch)
 	*nf = *f
 
 	// reset
-	nf.onceReq = newRequest()
+	nf.req = newEmptyRequest()
 	nf.err = nil
 	nf.ctx = context.Background()
 	return nf
@@ -112,58 +104,38 @@ func (f *Fetch) WithOptions(options ...Option) *Fetch {
 }
 
 // Get get 请求
-func (f *Fetch) Get(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodGet, refPath)
+func (f *Fetch) Get(ctx context.Context, path string) *Fetch {
+	return f.Method(ctx, http.MethodGet, path)
 }
 
 // Post post 请求
-func (f *Fetch) Post(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodPost, refPath)
+func (f *Fetch) Post(ctx context.Context, path string) *Fetch {
+	return f.Method(ctx, http.MethodPost, path)
 }
 
 // Put put 请求
-func (f *Fetch) Put(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodPut, refPath)
+func (f *Fetch) Put(ctx context.Context, path string) *Fetch {
+	return f.Method(ctx, http.MethodPut, path)
 }
 
 // Delete del 请求
-func (f *Fetch) Delete(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodDelete, refPath)
-}
-
-// Path 请求
-func (f *Fetch) Patch(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodPatch, refPath)
-}
-
-// Options 请求
-func (f *Fetch) Options(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodOptions, refPath)
-}
-
-// Trace 请求
-func (f *Fetch) Trace(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodTrace, refPath)
+func (f *Fetch) Delete(ctx context.Context, path string) *Fetch {
+	return f.Method(ctx, http.MethodDelete, path)
 }
 
 // Head 请求
-func (f *Fetch) Head(ctx context.Context, refPath string) *Fetch {
-	return f.Method(ctx, http.MethodHead, refPath)
+func (f *Fetch) Head(ctx context.Context, path string) *Fetch {
+	return f.Method(ctx, http.MethodHead, path)
 }
 
-func (f *Fetch) Method(ctx context.Context, method string, refPath string) *Fetch {
+func (f *Fetch) Method(ctx context.Context, method string, path string) *Fetch {
 	if f.err != nil {
 		return f
 	}
 	nf := f.withContext(ctx)
-	nf.setMethodPath(method, refPath)
+	nf.req.Method = method
+	nf.req.URL, nf.err = util.ResolveReferenceURL(nf.baseURL, path)
 	return nf
-}
-
-// setPath 设置 refPath
-func (f *Fetch) setMethodPath(method, refPath string) {
-	f.onceReq.Method = method
-	f.onceReq.URL, f.err = util.ResolveReferenceURL(f.baseURL, refPath)
 }
 
 // Query 设置查询参数
@@ -175,15 +147,15 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 	}
 
 	if len(args) > 0 {
-		if f.onceReq.Method == "" {
-			f.err = errors.New("fetch.Query: must first call Method() such as Get()/Post()... ")
+		if f.req.Method == "" {
+			f.err = errors.New("fetch.Query: empty method, please use Get()/Post() etc. or Method() to set method")
 			return f
 		}
-		q := f.onceReq.URL.Query()
+		q := f.req.URL.Query()
 		for i := 0; i < len(args); {
 			if m, ok := args[i].(map[string]interface{}); ok {
 				for k, v := range m {
-					q.Add(k, util.ToString(v))
+					q.Set(k, util.ToString(v))
 				}
 				i++
 				continue
@@ -197,7 +169,7 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 			// key-val pair
 			key, val := args[i], args[i+1]
 			if keyStr, ok := key.(string); ok {
-				q.Add(keyStr, util.ToString(val))
+				q.Set(keyStr, util.ToString(val))
 			} else {
 				f.err = fmt.Errorf("fetch.Query: args key-val parir key[%v] must be string type", key)
 				return f
@@ -205,7 +177,7 @@ func (f *Fetch) Query(args ...interface{}) *Fetch {
 
 			i += 2
 		}
-		f.onceReq.URL.RawQuery = q.Encode()
+		f.req.URL.RawQuery = q.Encode()
 	}
 	return f
 }
@@ -221,7 +193,7 @@ func (f *Fetch) AddHeader(args ...interface{}) *Fetch {
 		for i := 0; i < len(args); {
 			if m, ok := args[i].(map[string]interface{}); ok {
 				for k, v := range m {
-					f.onceReq.Header.Add(k, util.ToString(v))
+					f.req.Header.Add(k, util.ToString(v))
 				}
 				i++
 				continue
@@ -235,7 +207,7 @@ func (f *Fetch) AddHeader(args ...interface{}) *Fetch {
 			// key-val pair
 			key, val := args[i], args[i+1]
 			if keyStr, ok := key.(string); ok {
-				f.onceReq.Header.Add(keyStr, util.ToString(val))
+				f.req.Header.Add(keyStr, util.ToString(val))
 			} else {
 				f.err = fmt.Errorf("fetch.AddHeader: args key-val parir key[%v] must be string type", key)
 				return f
@@ -258,7 +230,7 @@ func (f *Fetch) SetHeader(args ...interface{}) *Fetch {
 		for i := 0; i < len(args); {
 			if m, ok := args[i].(map[string]interface{}); ok {
 				for k, v := range m {
-					f.onceReq.Header.Set(k, util.ToString(v))
+					f.req.Header.Set(k, util.ToString(v))
 				}
 				i++
 				continue
@@ -272,7 +244,7 @@ func (f *Fetch) SetHeader(args ...interface{}) *Fetch {
 			// key-val pair
 			key, val := args[i], args[i+1]
 			if keyStr, ok := key.(string); ok {
-				f.onceReq.Header.Set(keyStr, util.ToString(val))
+				f.req.Header.Set(keyStr, util.ToString(val))
 			} else {
 				f.err = fmt.Errorf("fetch.SetHeader: args key-val parir key[%v] must be string type", key)
 				return f
@@ -286,13 +258,13 @@ func (f *Fetch) SetHeader(args ...interface{}) *Fetch {
 
 func (f *Fetch) AddCookie(cs ...*http.Cookie) *Fetch {
 	for _, c := range cs {
-		f.onceReq.AddCookie(c)
+		f.req.AddCookie(c)
 	}
 	return f
 }
 
 func (f *Fetch) SetBasicAuth(username, password string) *Fetch {
-	f.onceReq.SetBasicAuth(username, password)
+	f.req.SetBasicAuth(username, password)
 	return f
 }
 
@@ -301,18 +273,18 @@ func (f *Fetch) buildRequest() (*http.Request, error) {
 		return nil, f.err
 	}
 
-	if f.onceReq.Method == "" {
+	if f.req.Method == "" {
 		f.err = errors.New("fetch: empty method")
 		return nil, f.err
 	}
 
-	if f.onceReq.URL.String() == "" {
+	if f.req.URL.String() == "" {
 		f.err = errors.New("fetch: empty url")
 		return nil, f.err
 	}
 
 	// build req
-	req, err := http.NewRequest(f.onceReq.Method, f.onceReq.URL.String(), f.onceReq.Body)
+	req, err := http.NewRequest(f.req.Method, f.req.URL.String(), f.req.body)
 	if err != nil {
 		f.err = err
 		return nil, err
@@ -320,12 +292,28 @@ func (f *Fetch) buildRequest() (*http.Request, error) {
 	req = req.WithContext(f.Context())
 
 	// clone header
-	for k, v := range f.onceReq.Header {
-		for _, vv := range v {
-			req.Header.Add(k, vv)
-		}
-	}
+	req.Header = f.cloneHeader(f.req.Header)
 	return req, nil
+}
+
+func (f *Fetch) cloneHeader(h http.Header) http.Header {
+	if h == nil {
+		return nil
+	}
+
+	// Find total number of values.
+	nv := 0
+	for _, vv := range h {
+		nv += len(vv)
+	}
+	sv := make([]string, nv) // shared backing array for headers' values
+	h2 := make(http.Header, len(h))
+	for k, vv := range h {
+		n := copy(sv, vv)
+		h2[k] = sv[:n:n]
+		sv = sv[n:]
+	}
+	return h2
 }
 
 // ================== set request body ==================
@@ -339,8 +327,8 @@ func (f *Fetch) Body(b body.Body) *Fetch {
 			return f
 		}
 
-		f.onceReq.Body = ioutil.NopCloser(bb)
-		f.onceReq.Header.Set(body.HeaderContentType, b.ContentType())
+		f.req.body = bb // set body not Body
+		f.req.Header.Set(body.HeaderContentType, b.ContentType())
 	}
 
 	return f
@@ -348,24 +336,24 @@ func (f *Fetch) Body(b body.Body) *Fetch {
 
 // JSON 发送 application/json 格式消息
 // p 支持 string/[]byte/其他类型按 json.Marshal 编码
-func (f *Fetch) JSON(p interface{}) *Fetch {
-	return f.Body(body.NewJSON(p))
+func (f *Fetch) JSON(data interface{}) *Fetch {
+	return f.Body(body.NewJSON(data))
 }
 
 // XML 发送 application/xml 格式消息
 // p 支持 string/[]byte/其他类型按 xml.Marshal 编码
-func (f *Fetch) XML(p interface{}) *Fetch {
-	return f.Body(body.NewXML(p))
+func (f *Fetch) XML(data interface{}) *Fetch {
+	return f.Body(body.NewXML(data))
 }
 
 // Form 发送 x-www-form-urlencoded 格式消息
-func (f *Fetch) Form(p map[string]interface{}) *Fetch {
-	return f.Body(body.NewFormFromMap(p))
+func (f *Fetch) Form(data map[string]interface{}) *Fetch {
+	return f.Body(body.NewFormFromMap(data))
 }
 
 // MultipartForm 发送 multipart/form-data 格式消息
-func (f *Fetch) MultipartForm(p map[string]interface{}, fs ...body.File) *Fetch {
-	return f.Body(body.NewMultipartFormFromMap(p, fs...))
+func (f *Fetch) MultipartForm(data map[string]interface{}, fs ...body.File) *Fetch {
+	return f.Body(body.NewMultipartFormFromMap(data, fs...))
 }
 
 // ================== set request body end ==================
@@ -373,10 +361,10 @@ func (f *Fetch) MultipartForm(p map[string]interface{}, fs ...body.File) *Fetch 
 // ================== bind body ==================
 
 // Bind 按已注册 bind 类型，解析 http 响应
-func (f *Fetch) Bind(bindType string, v interface{}) error {
-	b, ok := f.bind[bindType]
+func (f *Fetch) Bind(bind binding.Binding, v interface{}) error {
+	b, ok := f.bind[bind.Name()]
 	if !ok {
-		return fmt.Errorf("fetch: unknown bind type:%v", bindType)
+		return fmt.Errorf("fetch.Bind: unknown bind[%s]", bind.Name())
 	}
 
 	resp, respBody, err := f.Resp()
@@ -384,7 +372,7 @@ func (f *Fetch) Bind(bindType string, v interface{}) error {
 		return err
 	}
 	if resp == nil {
-		return errors.New("fetch: nil http.Response")
+		return errors.New("fetch.Bind: nil http.Response")
 	}
 
 	return b.Bind(resp, respBody, v)
@@ -392,12 +380,12 @@ func (f *Fetch) Bind(bindType string, v interface{}) error {
 
 // BindJSON bind http.Body with json
 func (f *Fetch) BindJSON(v interface{}) error {
-	return f.Bind(binding.JSON{}.Name(), v)
+	return f.Bind(&binding.JSON{}, v)
 }
 
 // BindXML bind http.Body with xml
 func (f *Fetch) BindXML(v interface{}) error {
-	return f.Bind(binding.XML{}.Name(), v)
+	return f.Bind(&binding.XML{}, v)
 }
 
 // ================== bind body end ==================
@@ -421,9 +409,9 @@ func (f *Fetch) do() *response {
 	}
 
 	// 定义 handle
-	httpDoHandler := func(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
+	handler := func(ctx context.Context, req *http.Request) (*http.Response, []byte, error) {
 		if f.debug { // debug req
-			_ = debugRequest(req, true)
+			_ = dumpRequest(req, true)
 		}
 
 		resp, err := f.client.Do(req)
@@ -433,7 +421,7 @@ func (f *Fetch) do() *response {
 		defer resp.Body.Close()
 
 		if f.debug { // debug resp
-			_ = debugResponse(resp, true)
+			_ = dumpResponse(resp, true)
 		}
 
 		var b []byte
@@ -441,8 +429,8 @@ func (f *Fetch) do() *response {
 		return resp, b, err
 	}
 
-	resp, b, err := f.chainInterceptor(f.Context(), req, httpDoHandler)
-	return &response{resp: resp, body: b, err: err}
+	resp, respBody, err := f.chainInterceptor(f.Context(), req, handler)
+	return &response{resp: resp, body: respBody, err: err}
 }
 
 // Resp return http.Response, resp body, err

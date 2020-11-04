@@ -1,8 +1,16 @@
 package fetch
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
-var defaultFetch = New("")
+var defaultFetch = New("", &Options{
+	Timeout: 15 * time.Second,
+	Interceptors: []Interceptor{
+		DefaultLogInterceptor,
+	},
+})
 
 func Get(ctx context.Context, url string) *Fetch {
 	return defaultFetch.Get(ctx, url)
@@ -22,8 +30,4 @@ func Delete(ctx context.Context, url string) *Fetch {
 
 func Head(ctx context.Context, url string) *Fetch {
 	return defaultFetch.Head(ctx, url)
-}
-
-func Patch(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Patch(ctx, url)
 }

@@ -102,3 +102,20 @@ func ToString(v interface{}) string {
 
 	return s
 }
+
+func ResetBody(req *http.Request, b []byte) {
+	if len(b) == 0 {
+		req.ContentLength = 0
+		req.Body = nil
+		req.GetBody = nil
+		return
+	}
+	body := bytes.NewReader(b)
+	req.Body = ioutil.NopCloser(body)
+	req.ContentLength = int64(body.Len())
+	snapshot := *body
+	req.GetBody = func() (io.ReadCloser, error) {
+		r := snapshot
+		return ioutil.NopCloser(&r), nil
+	}
+}
