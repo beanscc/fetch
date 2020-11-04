@@ -4,13 +4,12 @@ http client 网络请求封装
 ## Overview
 
 涵盖功能:
-- 支持 Get/Post/Put/Delete/Patch/Options/Head 等方法
+- 支持 Get/Post/Put/Delete/Head 等方法
 - 支持自定义设置 client
 - 支持 debug 模式打印请求和响应详细
 - 支持 timeout 超时和 ctx 超时设置
 - 支持自定义 Interceptor 拦截器设置
 - 支持自定义 Bind 解析请求响应
-
 
 ## Contents
 
@@ -24,9 +23,9 @@ http client 网络请求封装
 			- [Debug Option](#debug)
 			- [Timeout Option](#timeout)
 	- [Method 设置](#method-设置)
-	- [Query 参数设置](#query-参数设置)
-	- [Header 参数设置](#header-参数设置)
-	- [Body 参数设置](#body-参数设置)
+	- [Query 设置](#query-设置)
+	- [Header 设置](#header-设置)
+	- [Body 设置](#body-设置)
 		- [发送 application/json 数据](#发送-applicationjson-数据)
 		- [发送 application/xml 数据](#发送-applicationxml-数据)
 		- [发送 application/x-www-form-urlencoded 表单数据](#发送-applicationx-www-form-urlencoded-表单数据)
@@ -140,7 +139,7 @@ func main() {
 
 	// output:
 	/*
-		2020/07/01 16:41:38 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
+		2020/07/01 16:41:38 [Fetch] GET /api/user?id=10 HTTP/1.1
 		Host: 127.0.0.1:50305
 		User-Agent: Go-http-client/1.1
 		Hk_1: 111
@@ -155,7 +154,7 @@ func main() {
 		{"age": 18}
 		0
 
-		2020/07/01 16:41:38 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/07/01 16:41:38 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 122
 		Content-Type: application/json
 		Date: Wed, 01 Jul 2020 08:41:38 GMT
@@ -215,12 +214,12 @@ f := fetch.New(ts.URL, fetch.Debug(true)).
 
 // output
 /*
-2020/06/30 01:15:55 [Fetch-Debug] GET /api/user?id=10 HTTP/1.1
+2020/06/30 01:15:55 [Fetch] GET /api/user?id=10 HTTP/1.1
 Host: 127.0.0.1:49893
 User-Agent: Go-http-client/1.1
 Accept-Encoding: gzip
 
-2020/06/30 01:15:55 [Fetch-Debug] HTTP/1.1 200 OK
+2020/06/30 01:15:55 [Fetch] HTTP/1.1 200 OK
 Content-Length: 119
 Content-Type: application/json
 Date: Mon, 29 Jun 2020 17:15:55 GMT
@@ -278,7 +277,7 @@ f = f.Get(ctx, "city")
 b, err := f.Query("id", 1).Text()
 ```
 
-### Query 参数设置
+### Query 设置
 
 ```go
 f = f.Get(ctx, "api/user")
@@ -299,7 +298,7 @@ f2 := f.Query("id", 1, map[string]interface{}{
 }, "height", 175)
 ```
 
-### Header 参数设置
+### Header 设置
 
 ```go
 f = f.Get(ctx, "city")
@@ -316,7 +315,7 @@ f.AddHeader("hk_1", "hk_1_val").
 f.SetHeader("app-time", time.Now().UnixNano()) // 将覆盖上面 "app-time" 的值
 ```
 
-### Body 参数设置
+### Body 设置
 
 
 ```go
@@ -405,7 +404,7 @@ func TestFetchPostJSON(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:09:59 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:09:59 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58717
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -416,7 +415,7 @@ func TestFetchPostJSON(t *testing.T) {
 		{"age":18,"name":"ming.liu"}
 		0
 
-		2020/06/30 16:09:59 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:09:59 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:09:59 GMT
@@ -488,7 +487,7 @@ func TestFetchPostXML(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:09:05 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:09:05 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58708
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -499,7 +498,7 @@ func TestFetchPostXML(t *testing.T) {
 		<user id="6135200011057538"><name>si.li</name><age>20</age><height>175</height></user>
 		0
 
-		2020/06/30 16:09:05 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:09:05 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 57
 		Content-Type: application/xml
 		Date: Tue, 30 Jun 2020 08:09:05 GMT
@@ -551,7 +550,7 @@ func TestFetchPostForm(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:08:06 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:08:06 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58696
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -562,7 +561,7 @@ func TestFetchPostForm(t *testing.T) {
 		age=25&name=wang.wu
 		0
 
-		2020/06/30 16:08:06 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:08:06 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:08:06 GMT
@@ -635,7 +634,7 @@ func TestFetchPostMultipartForm(t *testing.T) {
 
 	// output:
 	/*
-		2020/06/30 16:18:38 [Fetch-Debug] POST /api/user HTTP/1.1
+		2020/06/30 16:18:38 [Fetch] POST /api/user HTTP/1.1
 		Host: 127.0.0.1:58880
 		User-Agent: Go-http-client/1.1
 		Transfer-Encoding: chunked
@@ -668,7 +667,7 @@ func TestFetchPostMultipartForm(t *testing.T) {
 
 		0
 
-		2020/06/30 16:18:38 [Fetch-Debug] HTTP/1.1 200 OK
+		2020/06/30 16:18:38 [Fetch] HTTP/1.1 200 OK
 		Content-Length: 22
 		Content-Type: application/json
 		Date: Tue, 30 Jun 2020 08:18:38 GMT
@@ -761,7 +760,7 @@ type Handler func(ctx context.Context, req *http.Request) (*http.Response, []byt
 
 // Interceptor 请求拦截器
 // 多个 interceptor one,two,three 则执行顺序是 one,two,three 的 handler 调用前的执行流，然后是 handler, 接着是 three,two,one 中 handler 调用之后的执行流
-type Interceptor func(ctx context.Context, req *http.Request, httpHandler Handler) (*http.Response, []byte, error)
+type Interceptor func(ctx context.Context, req *http.Request, handler Handler) (*http.Response, []byte, error)
 
 // chainInterceptor 将多个 Interceptor 合并为一个
 func chainInterceptor(interceptors ...Interceptor) Interceptor {
