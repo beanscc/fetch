@@ -12,22 +12,22 @@ var defaultFetch = New("", &Options{
 	},
 })
 
-func Get(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Get(ctx, url)
+func Get(ctx context.Context, url string, params ...interface{}) *Fetch {
+	return defaultFetch.Get(ctx, url, params...)
 }
 
-func Post(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Post(ctx, url)
+func Post(ctx context.Context, url string, params ...interface{}) *Fetch {
+	return defaultFetch.Post(ctx, url, params...)
 }
 
-func Put(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Put(ctx, url)
+func Put(ctx context.Context, url string, params ...interface{}) *Fetch {
+	return defaultFetch.Put(ctx, url, params...)
 }
 
-func Delete(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Delete(ctx, url)
+func Delete(ctx context.Context, url string, params ...interface{}) *Fetch {
+	return defaultFetch.Delete(ctx, url, params...)
 }
 
-func Head(ctx context.Context, url string) *Fetch {
-	return defaultFetch.Head(ctx, url)
+func Head(ctx context.Context, url string, params ...interface{}) *Fetch {
+	return defaultFetch.Head(ctx, url, params...)
 }

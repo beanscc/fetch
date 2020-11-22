@@ -5,6 +5,7 @@ http client 网络请求封装
 
 涵盖功能:
 - 支持 Get/Post/Put/Delete/Head 等方法
+- 支持 Path 参数设置
 - 支持自定义设置 client
 - 支持 debug 模式打印请求和响应详细
 - 支持 timeout 超时和 ctx 超时设置
@@ -276,6 +277,18 @@ b, err := f.Get(ctx, "city").Query("id", "1").Text()
 f = f.Get(ctx, "city")
 b, err := f.Query("id", 1).Text()
 ```
+
+
+#### path 动态参数设置
+
+```go
+f := fetch.Get(ctx, "api/user/:uid/address/:address_id", 1, 20)
+// 就是请求 api/user/1/address/20
+```
+
+在 path 中定义动态参数，使用 `:` 表示动态参数，如 `api/user/:uid/address/:address_id`
+
+调用时，在 Get/Post ... 等请求方法 path 参数后，按顺序加上 path 参数实际的值，即可
 
 ### Query 设置
 

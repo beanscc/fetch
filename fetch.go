@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/beanscc/fetch/binding"
@@ -47,7 +48,7 @@ func New(baseURL string, options ...Option) *Fetch {
 		baseURL:          baseURL,
 		interceptors:     make([]Interceptor, 0),
 		chainInterceptor: chainInterceptor(),
-		req:              newEmptyRequest(),
+		req:              newRequest(),
 		debug:            false,
 		err:              nil,
 		ctx:              context.Background(),
@@ -66,7 +67,7 @@ func (f *Fetch) clone() *Fetch {
 	*nf = *f
 
 	// reset
-	nf.req = newEmptyRequest()
+	nf.req = newRequest()
 	nf.err = nil
 	nf.ctx = context.Background()
 	return nf
@@ -104,36 +105,53 @@ func (f *Fetch) WithOptions(options ...Option) *Fetch {
 }
 
 // Get get 请求
-func (f *Fetch) Get(ctx context.Context, path string) *Fetch {
-	return f.Method(ctx, http.MethodGet, path)
+func (f *Fetch) Get(ctx context.Context, path string, params ...interface{}) *Fetch {
+	return f.Method(ctx, http.MethodGet, path, params...)
 }
 
 // Post post 请求
-func (f *Fetch) Post(ctx context.Context, path string) *Fetch {
-	return f.Method(ctx, http.MethodPost, path)
+func (f *Fetch) Post(ctx context.Context, path string, params ...interface{}) *Fetch {
+	return f.Method(ctx, http.MethodPost, path, params...)
 }
 
 // Put put 请求
-func (f *Fetch) Put(ctx context.Context, path string) *Fetch {
-	return f.Method(ctx, http.MethodPut, path)
+func (f *Fetch) Put(ctx context.Context, path string, params ...interface{}) *Fetch {
+	return f.Method(ctx, http.MethodPut, path, params...)
 }
 
 // Delete del 请求
-func (f *Fetch) Delete(ctx context.Context, path string) *Fetch {
-	return f.Method(ctx, http.MethodDelete, path)
+func (f *Fetch) Delete(ctx context.Context, path string, params ...interface{}) *Fetch {
+	return f.Method(ctx, http.MethodDelete, path, params...)
 }
 
 // Head 请求
-func (f *Fetch) Head(ctx context.Context, path string) *Fetch {
-	return f.Method(ctx, http.MethodHead, path)
+func (f *Fetch) Head(ctx context.Context, path string, params ...interface{}) *Fetch {
+	return f.Method(ctx, http.MethodHead, path, params...)
 }
 
-func (f *Fetch) Method(ctx context.Context, method string, path string) *Fetch {
+func (f *Fetch) Method(ctx context.Context, method string, path string, params ...interface{}) *Fetch {
 	if f.err != nil {
 		return f
 	}
 	nf := f.withContext(ctx)
 	nf.req.Method = method
+
+	if len(params) > 0 {
+		paths := strings.Split(path, "/")
+		ii := 0
+		for _, v := range params {
+			for ; ii < len(paths); ii++ {
+				if strings.HasPrefix(paths[ii], ":") {
+					paths[ii] = util.ToString(v)
+					ii++
+					break
+				}
+			}
+		}
+
+		path = strings.Join(paths, "/")
+	}
+
 	nf.req.URL, nf.err = util.ResolveReferenceURL(nf.baseURL, path)
 	return nf
 }
