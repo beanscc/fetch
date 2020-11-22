@@ -118,7 +118,7 @@ func TestFetchGet(t *testing.T) {
 	tRes := newTestBaseResp(&data)
 	ctx := context.WithValue(context.Background(), "k1", "v1")
 	err := f.
-		Get(ctx, "/api/user").
+		Get(ctx, "/api/user/:id/address/:id", 10, 20).
 		Query("id", 10, map[string]interface{}{"name": "ming"}).
 		AddHeader("x-request-id", fmt.Sprintf("trace-id-%d", time.Now().UnixNano())).
 		// Bind("json", &tRes)

@@ -10,7 +10,7 @@ type request struct {
 	body io.Reader
 }
 
-func newEmptyRequest() *request {
+func newRequest() *request {
 	return &request{
 		Request: &http.Request{
 			Header: make(http.Header),
