@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -270,40 +271,73 @@ func TestFetchPostForm(t *testing.T) {
 
 	ctx := context.Background()
 	f := fetch.New(ts.URL, fetch.Debug(true))
+
+	formByMap := map[string]interface{}{
+		"name": "wang.wu",
+		"age":  25,
+	}
+
 	resBody, err := f.Post(ctx, "api/user").
-		Form(map[string]interface{}{
-			"name": "wang.wu",
-			"age":  25,
-		}).Text()
+		Form(formByMap).
+		Text()
 	if err != nil {
-		t.Errorf("TestFetchPostForm failed. err:%v", err)
+		t.Errorf("TestFetchPostForm map failed. err:%v", err)
 		return
 	}
-	t.Logf("TestFetchPostForm resp body:%s", resBody)
+	t.Logf("TestFetchPostForm map resp body:%s", resBody)
 
 	// output:
 	/*
-		2020/06/30 16:08:06 [Fetch] POST /api/user HTTP/1.1
-		Host: 127.0.0.1:58696
+		2021/11/20 11:06:29 [Fetch] POST /api/user HTTP/1.1
+		Host: 127.0.0.1:63533
 		User-Agent: Go-http-client/1.1
-		Transfer-Encoding: chunked
+		Content-Length: 19
 		Content-Type: application/x-www-form-urlencoded
 		Accept-Encoding: gzip
 
-		13
 		age=25&name=wang.wu
-		0
-
-		2020/06/30 16:08:06 [Fetch] HTTP/1.1 200 OK
-		Content-Length: 22
+		2021/11/20 11:06:29 [Fetch] HTTP/1.1 200 OK
+		Content-Length: 21
 		Content-Type: application/json
-		Date: Tue, 30 Jun 2020 08:08:06 GMT
-		X-Request-Id: trace-id-1593504486872096000
+		Date: Sat, 20 Nov 2021 03:06:29 GMT
+		X-Request-Id: trace-id-1637377589793352000
 
 		{"code":0,"msg":"ok"}
-		--- PASS: TestFetchPostForm (0.00s)
-		    fetch_test.go:386: TestFetchPostForm resp body:{"code":0,"msg":"ok"}
+			fetch_test.go:287: TestFetchPostForm map resp body:{"code":0,"msg":"ok"}
 	*/
+
+	formByValues := url.Values{}
+	formByValues.Add("name", "xiao.ming")
+	formByValues.Add("age", "20")
+	resBody, err = f.Post(ctx, "api/user").
+		Form(formByValues).
+		Text()
+	if err != nil {
+		t.Errorf("TestFetchPostForm url.Values failed. err:%v", err)
+		return
+	}
+	t.Logf("TestFetchPostForm url.Values resp body:%s", resBody)
+
+	// output:
+	/*
+		2021/11/20 11:06:29 [Fetch] POST /api/user HTTP/1.1
+		Host: 127.0.0.1:63533
+		User-Agent: Go-http-client/1.1
+		Content-Length: 21
+		Content-Type: application/x-www-form-urlencoded
+		Accept-Encoding: gzip
+
+		age=20&name=xiao.ming
+		2021/11/20 11:06:29 [Fetch] HTTP/1.1 200 OK
+		Content-Length: 21
+		Content-Type: application/json
+		Date: Sat, 20 Nov 2021 03:06:29 GMT
+		X-Request-Id: trace-id-1637377589793933000
+
+		{"code":0,"msg":"ok"}
+		    fetch_test.go:299: TestFetchPostForm url.Values resp body:{"code":0,"msg":"ok"}
+	*/
+
 }
 
 func TestFetchPostMultipartForm(t *testing.T) {

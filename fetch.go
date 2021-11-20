@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/beanscc/fetch/util"
 )
 
-// Fetch
+// Fetch ...
 type Fetch struct {
 	// client 的基础 url, 若 baseURL 带有部分 path (eg: host:port/path/), 请在 path 后跟上 "/"
 	// baseURL 和 URLPath 的相对/绝对关系，请参考url.ResolveReference()
@@ -336,7 +337,7 @@ func (f *Fetch) cloneHeader(h http.Header) http.Header {
 
 // ================== set request body ==================
 
-// Send 设置请求的 body 消息体
+// Body 设置请求的 body 消息体
 func (f *Fetch) Body(b body.Body) *Fetch {
 	if b != nil {
 		bb, err := b.Body()
@@ -365,13 +366,34 @@ func (f *Fetch) XML(data interface{}) *Fetch {
 }
 
 // Form 发送 x-www-form-urlencoded 格式消息
-func (f *Fetch) Form(data map[string]interface{}) *Fetch {
-	return f.Body(body.NewFormFromMap(data))
+// data 支持 map[string]interface{} 或 url.Values
+func (f *Fetch) Form(data interface{}) *Fetch {
+	var b body.Body
+	switch data.(type) {
+	case map[string]interface{}:
+		b = body.NewFormFromMap(data.(map[string]interface{}))
+	case url.Values:
+		b = body.NewForm(data.(url.Values))
+	default:
+		b = body.NewErr(errors.New("fetch.Form: unsupported data type"))
+	}
+
+	return f.Body(b)
 }
 
 // MultipartForm 发送 multipart/form-data 格式消息
-func (f *Fetch) MultipartForm(data map[string]interface{}, fs ...body.File) *Fetch {
-	return f.Body(body.NewMultipartFormFromMap(data, fs...))
+// data 支持 map[string]interface{} 或 url.Values
+func (f *Fetch) MultipartForm(data interface{}, fs ...body.File) *Fetch {
+	var b body.Body
+	switch data.(type) {
+	case map[string]interface{}:
+		b = body.NewMultipartFormFromMap(data.(map[string]interface{}), fs...)
+	case url.Values:
+		b = body.NewMultipartForm(data.(url.Values), fs...)
+	default:
+		b = body.NewErr(errors.New("fetch.MultipartForm: unsupported data type"))
+	}
+	return f.Body(b)
 }
 
 // ================== set request body end ==================
