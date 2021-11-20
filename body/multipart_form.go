@@ -26,7 +26,7 @@ type File struct {
 	Content     []byte // 文件内容
 }
 
-// NewFormDataBody return new MultipartForm
+// NewMultipartForm return new MultipartForm from url.Values
 func NewMultipartForm(uv url.Values, fs ...File) *MultipartForm {
 	return &MultipartForm{
 		data:  uv,

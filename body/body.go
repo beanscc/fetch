@@ -1,6 +1,7 @@
 package body
 
 import (
+	"errors"
 	"io"
 )
 
@@ -18,4 +19,28 @@ var (
 	_ Body = &XML{}
 	_ Body = &Form{}
 	_ Body = &MultipartForm{}
+	_ Body = &errBody{}
 )
+
+type errBody struct {
+	err error
+}
+
+func NewErr(e error) *errBody {
+	return &errBody{err: e}
+}
+
+func (e *errBody) Body() (io.Reader, error) {
+	return nil, e.Error()
+}
+
+func (e *errBody) ContentType() string {
+	return ""
+}
+
+func (e *errBody) Error() error {
+	if e.err == nil {
+		return errors.New("wrong body")
+	}
+	return e.err
+}
